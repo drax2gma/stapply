@@ -36,8 +36,9 @@ type App struct {
 
 // Step defines a single action to execute.
 type Step struct {
-	Action string // Action type: cmd, write_file, template_file, systemd
-	Args   string // Action arguments (action-specific format)
+	Action  string            // Action type: cmd, write_file, template_file, systemd
+	Args    string            // Raw action arguments (action-specific format)
+	ArgsMap map[string]string // Parsed arguments for controller
 }
 
 // GetOrderedSteps returns steps sorted by step number.

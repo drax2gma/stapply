@@ -71,12 +71,12 @@ nats_creds=/etc/sapply/nats.creds
 
 ## Actions
 
-| Action          | Description                     |
-| --------------- | ------------------------------- |
-| `cmd`           | Execute shell command           |
-| `write_file`    | Write content to file (M2)      |
-| `template_file` | Render Go template to file (M2) |
-| `systemd`       | Systemd unit control (M3)       |
+| Action          | Status | Description                                              |
+| --------------- | ------ | -------------------------------------------------------- |
+| `cmd`           | ✅ M1  | Execute shell command                                    |
+| `write_file`    | ✅ M2  | Write content to file with change detection              |
+| `template_file` | ✅ M2  | Render Go template to file                               |
+| `systemd`       | ✅ M3  | Systemd unit control (enable/disable/start/stop/restart) |
 
 ## Project Structure
 

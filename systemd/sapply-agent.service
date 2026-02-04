@@ -6,6 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=root
 ExecStart=/usr/local/bin/sapply-agent -config /etc/sapply/agent.ini
 Restart=always
 RestartSec=5
@@ -13,11 +14,10 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sapply-agent
 
-# Security hardening
+# Security settings for automation agent
+# Note: Relaxed restrictions to allow package installation,
+# config management, and systemd service control
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/etc/sapply
 PrivateTmp=true
 
 # Environment file (optional, for overrides)

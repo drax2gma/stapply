@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	sectionRe = regexp.MustCompile(`^\[(\w+):([^\]]+)\]$`)
+	sectionRe  = regexp.MustCompile(`^\[(\w+):([^\]]+)\]$`)
 	keyValueRe = regexp.MustCompile(`^([^=]+)=(.*)$`)
 )
 
@@ -161,7 +161,7 @@ func parseList(value string) []string {
 	return result
 }
 
-// parseStep parses a step value like "cmd:apt-get install -y nginx" or "systemd:restart nginx".
+// parseStep parses a step value like "cmd:apt-get install -y nginx" or "write_file:/path/to/file mode=0644".
 func parseStep(value string) (Step, error) {
 	idx := strings.Index(value, ":")
 	if idx == -1 {
@@ -171,8 +171,49 @@ func parseStep(value string) (Step, error) {
 	action := value[:idx]
 	args := value[idx+1:]
 
-	return Step{
-		Action: action,
-		Args:   args,
-	}, nil
+	step := Step{
+		Action:  action,
+		Args:    args,
+		ArgsMap: make(map[string]string),
+	}
+
+	// Parse args based on action type
+	switch action {
+	case "cmd":
+		// For cmd, args is just the command
+		step.ArgsMap["command"] = args
+
+	case "write_file", "template_file":
+		// For file actions, first token is path, rest are key=value pairs
+		parts := strings.Fields(args)
+		if len(parts) == 0 {
+			return Step{}, fmt.Errorf("missing path for %s action", action)
+		}
+		step.ArgsMap["path"] = parts[0]
+
+		// Parse remaining key=value pairs
+		for _, part := range parts[1:] {
+			if eqIdx := strings.Index(part, "="); eqIdx != -1 {
+				key := part[:eqIdx]
+				val := part[eqIdx+1:]
+				step.ArgsMap[key] = val
+			}
+		}
+
+	case "systemd":
+		// For systemd, args format is "action unit"
+		parts := strings.Fields(args)
+		if len(parts) >= 1 {
+			step.ArgsMap["action"] = parts[0]
+		}
+		if len(parts) >= 2 {
+			step.ArgsMap["unit"] = parts[1]
+		}
+
+	default:
+		// Unknown action, just store as command
+		step.ArgsMap["command"] = args
+	}
+
+	return step, nil
 }

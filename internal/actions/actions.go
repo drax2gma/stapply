@@ -20,6 +20,9 @@ func NewRegistry() *Registry {
 	}
 	// Register built-in actions
 	r.Register("cmd", &CmdAction{})
+	r.Register("write_file", &WriteFileAction{})
+	r.Register("template_file", &TemplateFileAction{})
+	r.Register("systemd", &SystemdAction{})
 	return r
 }
 

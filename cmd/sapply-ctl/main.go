@@ -135,90 +135,126 @@ func cmdRun(args []string) {
 	fmt.Printf("   Apps: %v\n", env.Apps)
 	fmt.Println()
 
-	// Track results
-	var okCount, changedCount, failedCount int
+	// Determine concurrency limit
+	concurrency := env.Concurrency
+	if concurrency <= 0 {
+		concurrency = len(env.Hosts) // No limit, run all in parallel
+	}
 
-	// Execute for each host
+	// Channel for collecting results
+	type result struct {
+		ok      int
+		changed int
+		failed  int
+	}
+	resultCh := make(chan result, len(env.Hosts))
+
+	// Semaphore for concurrency control
+	semaphore := make(chan struct{}, concurrency)
+
+	// Execute hosts in parallel
 	for _, hostID := range env.Hosts {
-		host, ok := cfg.Hosts[hostID]
-		if !ok {
-			fmt.Printf("⚠️  Host not found: %s\n", hostID)
-			failedCount++
-			continue
-		}
+		// Acquire semaphore
+		semaphore <- struct{}{}
 
-		agentID := host.AgentID
-		if agentID == "" {
-			agentID = hostID
-		}
+		go func(hID string) {
+			defer func() { <-semaphore }() // Release semaphore
 
-		fmt.Printf("📦 Host: %s (agent_id=%s)\n", hostID, agentID)
+			var ok, changed, failed int
 
-		// Execute each app
-		for _, appName := range env.Apps {
-			app, ok := cfg.Apps[appName]
-			if !ok {
-				fmt.Printf("   ⚠️  App not found: %s\n", appName)
-				failedCount++
-				continue
+			host, exists := cfg.Hosts[hID]
+			if !exists {
+				fmt.Printf("⚠️  Host not found: %s\n", hID)
+				resultCh <- result{failed: 1}
+				return
 			}
 
-			fmt.Printf("   📋 App: %s\n", appName)
+			agentID := host.AgentID
+			if agentID == "" {
+				agentID = hID
+			}
 
-			steps := app.GetOrderedSteps()
-			for i, step := range steps {
-				fmt.Printf("      Step %d: %s\n", i+1, step.Action)
+			fmt.Printf("📦 Host: %s (agent_id=%s)\n", hID, agentID)
 
-				// Build args from step
-				stepArgs := make(map[string]string)
-				stepArgs["command"] = step.Args // For cmd action
-
-				req := protocol.NewRunRequest(step.Action, stepArgs, int(*timeout/time.Millisecond))
-				data, err := json.Marshal(req)
-				if err != nil {
-					fmt.Printf("         ❌ Marshal error: %v\n", err)
-					failedCount++
+			// Execute each app
+			for _, appName := range env.Apps {
+				app, appExists := cfg.Apps[appName]
+				if !appExists {
+					fmt.Printf("   ⚠️  App not found: %s\n", appName)
+					failed++
 					continue
 				}
 
-				subject := "sapply.run." + agentID
-				msg, err := nc.Request(subject, data, *timeout)
-				if err != nil {
-					if err == nats.ErrTimeout {
-						fmt.Printf("         ❌ Timeout\n")
-					} else {
-						fmt.Printf("         ❌ Error: %v\n", err)
+				fmt.Printf("   📋 App: %s\n", appName)
+
+				steps := app.GetOrderedSteps()
+				for i, step := range steps {
+					fmt.Printf("      Step %d: %s\n", i+1, step.Action)
+
+					// Use parsed args from step
+					stepArgs := step.ArgsMap
+					if stepArgs == nil {
+						stepArgs = make(map[string]string)
 					}
-					failedCount++
-					continue
-				}
 
-				var resp protocol.RunResponse
-				if err := json.Unmarshal(msg.Data, &resp); err != nil {
-					fmt.Printf("         ❌ Response parse error: %v\n", err)
-					failedCount++
-					continue
-				}
-
-				switch resp.Status {
-				case protocol.StatusOK:
-					if resp.Changed {
-						fmt.Printf("         ✅ Changed (%dms)\n", resp.DurationMs)
-						changedCount++
-					} else {
-						fmt.Printf("         ✅ OK (%dms)\n", resp.DurationMs)
-						okCount++
+					req := protocol.NewRunRequest(step.Action, stepArgs, int(*timeout/time.Millisecond))
+					data, err := json.Marshal(req)
+					if err != nil {
+						fmt.Printf("         ❌ Marshal error: %v\n", err)
+						failed++
+						continue
 					}
-				case protocol.StatusFailed:
-					fmt.Printf("         ❌ Failed (exit=%d): %s\n", resp.ExitCode, resp.Stderr)
-					failedCount++
-				case protocol.StatusError:
-					fmt.Printf("         ❌ Error: %s\n", resp.Error)
-					failedCount++
+
+					subject := "sapply.run." + agentID
+					msg, err := nc.Request(subject, data, *timeout)
+					if err != nil {
+						if err == nats.ErrTimeout {
+							fmt.Printf("         ❌ Timeout\n")
+						} else {
+							fmt.Printf("         ❌ Error: %v\n", err)
+						}
+						failed++
+						continue
+					}
+
+					var resp protocol.RunResponse
+					if err := json.Unmarshal(msg.Data, &resp); err != nil {
+						fmt.Printf("         ❌ Response parse error: %v\n", err)
+						failed++
+						continue
+					}
+
+					switch resp.Status {
+					case protocol.StatusOK:
+						if resp.Changed {
+							fmt.Printf("         ✅ Changed (%dms)\n", resp.DurationMs)
+							changed++
+						} else {
+							fmt.Printf("         ✅ OK (%dms)\n", resp.DurationMs)
+							ok++
+						}
+					case protocol.StatusFailed:
+						fmt.Printf("         ❌ Failed (exit=%d): %s\n", resp.ExitCode, resp.Stderr)
+						failed++
+					case protocol.StatusError:
+						fmt.Printf("         ❌ Error: %s\n", resp.Error)
+						failed++
+					}
 				}
 			}
-		}
-		fmt.Println()
+			fmt.Println()
+
+			resultCh <- result{ok: ok, changed: changed, failed: failed}
+		}(hostID)
+	}
+
+	// Wait for all hosts to complete
+	var okCount, changedCount, failedCount int
+	for i := 0; i < len(env.Hosts); i++ {
+		r := <-resultCh
+		okCount += r.ok
+		changedCount += r.changed
+		failedCount += r.failed
 	}
 
 	// Print summary
