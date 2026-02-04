@@ -133,30 +133,45 @@ func cmdAdhoc(args []string) {
 		log.Fatalf("NATS URL validation failed: %v", err)
 	}
 
-	if *configPath == "" || *envName == "" {
-		fmt.Fprintln(os.Stderr, "Usage: sapply-ctl adhoc -c <config> -e <env> <action> <args...>")
+	if *envName == "" {
+		fmt.Fprintln(os.Stderr, "Usage: sapply-ctl adhoc [-c <config>] -e <env|agent_id> <action> <args...>")
 		os.Exit(1)
 	}
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "Error: action required")
-		fmt.Fprintln(os.Stderr, "Usage: sapply-ctl adhoc -c <config> -e <env> <action> <args...>")
+		fmt.Fprintln(os.Stderr, "Usage: sapply-ctl adhoc [-c <config>] -e <env|agent_id> <action> <args...>")
 		os.Exit(1)
 	}
 
 	action := fs.Arg(0)
 	actionArgs := strings.Join(fs.Args()[1:], " ")
 
-	// Parse configuration
-	cfg, err := config.Parse(*configPath)
-	if err != nil {
-		log.Fatalf("Failed to parse config: %v", err)
-	}
+	// Two modes: with config (multi-host environment) or without config (single agent)
+	var hosts []string
+	var cfg *config.Config
 
-	// Get environment
-	env, ok := cfg.Environments[*envName]
-	if !ok {
-		log.Fatalf("Environment not found: %s", *envName)
+	if *configPath != "" {
+		// Config mode: load environment from config file
+		var err error
+		cfg, err = config.Parse(*configPath)
+		if err != nil {
+			log.Fatalf("Failed to parse config: %v", err)
+		}
+
+		env, ok := cfg.Environments[*envName]
+		if !ok {
+			log.Fatalf("Environment not found: %s", *envName)
+		}
+		hosts = env.Hosts
+	} else {
+		// Direct mode: treat envName as agent_id
+		hosts = []string{*envName}
+
+		// Default NATS to agent_id if not specified
+		if *natsURL == "nats://localhost:4222" {
+			*natsURL = netutil.NormalizeNATSURL(*envName)
+		}
 	}
 
 	// Build args map based on action type
@@ -184,14 +199,20 @@ func cmdAdhoc(args []string) {
 	defer nc.Close()
 
 	fmt.Printf("🚀 Ad-hoc: %s %s\n", action, actionArgs)
-	fmt.Printf("   Environment: %s\n", *envName)
-	fmt.Printf("   Hosts: %v\n", env.Hosts)
+	if *configPath != "" {
+		fmt.Printf("   Environment: %s\n", *envName)
+	} else {
+		fmt.Printf("   Agent: %s\n", *envName)
+	}
+	fmt.Printf("   Hosts: %v\n", hosts)
 	fmt.Println()
 
-	// Execute on each host in parallel (using same pattern as cmdRun)
-	concurrency := env.Concurrency
-	if concurrency <= 0 {
-		concurrency = len(env.Hosts)
+	// Execute on each host in parallel
+	concurrency := len(hosts)
+	if *configPath != "" {
+		if env, ok := cfg.Environments[*envName]; ok && env.Concurrency > 0 {
+			concurrency = env.Concurrency
+		}
 	}
 
 	type result struct {
@@ -199,10 +220,10 @@ func cmdAdhoc(args []string) {
 		changed int
 		failed  int
 	}
-	resultCh := make(chan result, len(env.Hosts))
+	resultCh := make(chan result, len(hosts))
 	semaphore := make(chan struct{}, concurrency)
 
-	for _, hostID := range env.Hosts {
+	for _, hostID := range hosts {
 		semaphore <- struct{}{}
 
 		go func(hID string) {
@@ -210,15 +231,21 @@ func cmdAdhoc(args []string) {
 
 			var ok, changed, failed int
 
-			host, exists := cfg.Hosts[hID]
-			if !exists {
-				fmt.Printf("⚠️  Host not found: %s\n", hID)
-				resultCh <- result{failed: 1}
-				return
-			}
-
-			agentID := host.AgentID
-			if agentID == "" {
+			// Get agent_id
+			var agentID string
+			if cfg != nil {
+				host, exists := cfg.Hosts[hID]
+				if !exists {
+					fmt.Printf("⚠️  Host not found: %s\n", hID)
+					resultCh <- result{failed: 1}
+					return
+				}
+				agentID = host.AgentID
+				if agentID == "" {
+					agentID = hID
+				}
+			} else {
+				// Direct mode: hID is agent_id
 				agentID = hID
 			}
 
@@ -283,7 +310,7 @@ func cmdAdhoc(args []string) {
 
 	// Wait for all hosts to complete
 	var okCount, changedCount, failedCount int
-	for i := 0; i < len(env.Hosts); i++ {
+	for i := 0; i < len(hosts); i++ {
 		r := <-resultCh
 		okCount += r.ok
 		changedCount += r.changed
