@@ -52,12 +52,12 @@ Commands:
   help                         Show this help
 
 Global Options:
-  -nats <url>                  NATS server URL (default: nats://localhost:4222)`)
+  -nats <server>               NATS server (default: localhost)`)
 }
 
 func cmdPing(args []string) {
 	fs := flag.NewFlagSet("ping", flag.ExitOnError)
-	natsURL := fs.String("nats", "nats://localhost:4222", "NATS server URL")
+	natsURL := fs.String("nats", "nats://localhost:4222", "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
 	fs.Parse(args)
@@ -70,6 +70,7 @@ func cmdPing(args []string) {
 	agentID := fs.Arg(0)
 
 	// Validate NATS URL
+	*natsURL = netutil.NormalizeNATSURL(*natsURL)
 	if err := netutil.ValidateNATSURL(*natsURL, *allowPublic); err != nil {
 		log.Fatalf("NATS URL validation failed: %v", err)
 	}
@@ -119,6 +120,7 @@ func cmdAdhoc(args []string) {
 	fs.Parse(args)
 
 	// Validate NATS URL
+	*natsURL = netutil.NormalizeNATSURL(*natsURL)
 	if err := netutil.ValidateNATSURL(*natsURL, *allowPublic); err != nil {
 		log.Fatalf("NATS URL validation failed: %v", err)
 	}
@@ -299,6 +301,7 @@ func cmdRun(args []string) {
 	fs.Parse(args)
 
 	// Validate NATS URL
+	*natsURL = netutil.NormalizeNATSURL(*natsURL)
 	if err := netutil.ValidateNATSURL(*natsURL, *allowPublic); err != nil {
 		log.Fatalf("NATS URL validation failed: %v", err)
 	}
