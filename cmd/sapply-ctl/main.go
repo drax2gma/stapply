@@ -60,7 +60,7 @@ Global Options:
 
 func cmdPing(args []string) {
 	fs := flag.NewFlagSet("ping", flag.ExitOnError)
-	natsURL := fs.String("nats", "nats://localhost:4222", "NATS server (FQDN or IP)")
+	natsURL := fs.String("nats", "", "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
 	fs.Parse(args)
@@ -71,6 +71,11 @@ func cmdPing(args []string) {
 	}
 
 	agentID := fs.Arg(0)
+
+	// Default NATS URL to agent_id if not specified
+	if *natsURL == "" {
+		*natsURL = agentID
+	}
 
 	// Validate NATS URL
 	*natsURL = netutil.NormalizeNATSURL(*natsURL)
