@@ -12,8 +12,9 @@ const (
 
 // PingRequest is a health check request.
 type PingRequest struct {
-	RequestID string      `json:"request_id"`
-	Type      RequestType `json:"type"`
+	RequestID         string      `json:"request_id"`
+	Type              RequestType `json:"type"`
+	ControllerVersion string      `json:"controller_version"`
 }
 
 // RunRequest is an action execution request.
@@ -26,10 +27,11 @@ type RunRequest struct {
 }
 
 // NewPingRequest creates a new ping request with a generated ID.
-func NewPingRequest() *PingRequest {
+func NewPingRequest(controllerVersion string) *PingRequest {
 	return &PingRequest{
-		RequestID: generateID(),
-		Type:      RequestTypePing,
+		RequestID:         generateID(),
+		Type:              RequestTypePing,
+		ControllerVersion: controllerVersion,
 	}
 }
 

@@ -92,3 +92,27 @@ func FormatAllowedNetworks() string {
 		"100.64.0.0/10 (CGNAT/Tailscale)",
 	}, ", ")
 }
+
+// NormalizeNATSURL adds default scheme and port if missing.
+// defaults: scheme=nats://, port=4222
+func NormalizeNATSURL(server string) string {
+	if server == "" {
+		return ""
+	}
+
+	// Add default scheme if missing
+	if !strings.Contains(server, "://") {
+		server = "nats://" + server
+	}
+
+	// Check for port
+	u, err := url.Parse(server)
+	if err == nil {
+		if u.Port() == "" {
+			u.Host = net.JoinHostPort(u.Host, "4222")
+			return u.String()
+		}
+	}
+
+	return server
+}

@@ -30,6 +30,8 @@ func main() {
 		cmdRun(os.Args[2:])
 	case "adhoc":
 		cmdAdhoc(os.Args[2:])
+	case "update":
+		cmdUpdate(os.Args[2:])
 	case "version":
 		fmt.Printf("sapply-ctl version %s\n", Version)
 	case "help", "-h", "--help":
@@ -48,6 +50,7 @@ Commands:
   ping <agent_id>              Ping an agent
   run -c <config> -e <env>     Execute apps on environment
   adhoc -e <env> <action> ...  Execute single action on environment
+  update <agent_id>            Update an agent to controller version
   version                      Show version
   help                         Show this help
 
@@ -83,7 +86,7 @@ func cmdPing(args []string) {
 	defer nc.Close()
 
 	// Create ping request
-	req := protocol.NewPingRequest()
+	req := protocol.NewPingRequest(Version)
 	data, err := json.Marshal(req)
 	if err != nil {
 		log.Fatalf("Failed to marshal request: %v", err)

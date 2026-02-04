@@ -98,6 +98,16 @@ func main() {
 	}
 	log.Printf("Subscribed to %s", runSubject)
 
+	// Subscribe to update requests
+	updateSubject := "sapply.update." + cfg.AgentID
+	_, err = nc.Subscribe(updateSubject, func(msg *nats.Msg) {
+		handleUpdate(msg, cfg.AgentID, nc)
+	})
+	if err != nil {
+		log.Fatalf("Failed to subscribe to %s: %v", updateSubject, err)
+	}
+	log.Printf("Subscribed to %s", updateSubject)
+
 	// Wait for shutdown signal
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -124,6 +134,14 @@ func handlePing(msg *nats.Msg, agentID string) {
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
 		log.Printf("Invalid ping request: %v", err)
 		return
+	}
+
+	// Check version mismatch
+	if req.ControllerVersion != "" && req.ControllerVersion != Version {
+		log.Printf("⚠️  Version mismatch: agent=%s, controller=%s", Version, req.ControllerVersion)
+		if req.ControllerVersion > Version {
+			log.Printf("⚠️  Agent is outdated. Run 'sapply-ctl update %s' to update.", agentID)
+		}
 	}
 
 	resp := protocol.NewPingResponse(
