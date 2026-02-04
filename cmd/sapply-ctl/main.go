@@ -32,6 +32,8 @@ func main() {
 		cmdAdhoc(os.Args[2:])
 	case "update":
 		cmdUpdate(os.Args[2:])
+	case "status":
+		cmdStatus(os.Args[2:])
 	case "version":
 		fmt.Printf("sapply-ctl version %s\n", Version)
 	case "help", "-h", "--help":
@@ -51,6 +53,7 @@ Commands:
   run -c <config> -e <env>     Execute apps on environment
   adhoc -e <env> <action> ...  Execute single action on environment
   update <agent_id>            Update an agent to controller version
+  status -c <config>           Show config summary (environments, hosts, apps)
   version                      Show version
   help                         Show this help
 
