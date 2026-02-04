@@ -1,0 +1,27 @@
+[Unit]
+Description=Sapply Agent
+Documentation=https://github.com/drax2gma/stapply
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sapply-agent -config /etc/sapply/agent.ini
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sapply-agent
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/sapply
+PrivateTmp=true
+
+# Environment file (optional, for overrides)
+EnvironmentFile=-/etc/sapply/agent.env
+
+[Install]
+WantedBy=multi-user.target
