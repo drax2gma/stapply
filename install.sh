@@ -11,7 +11,7 @@ NATS_CREDS=""
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/sapply"
 SYSTEMD_DIR="/etc/systemd/system"
-BINARY_URL="https://github.com/drax2gma/stapply/releases/latest/download/sapply-agent"
+BINARY_URL="https://raw.githubusercontent.com/drax2gma/stapply/main/bin/sapply-agent"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
