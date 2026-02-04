@@ -58,3 +58,14 @@ tidy:
 
 deps:
 	$(GO) mod download
+
+# Create release binary for Linux AMD64
+release:
+	@mkdir -p $(BINARY_DIR)
+	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/sapply-agent ./cmd/sapply-agent
+	@echo "✅ Release binary created: $(BINARY_DIR)/sapply-agent"
+	@echo "   OS: linux"
+	@echo "   Arch: amd64"
+	@echo ""
+	@echo "Upload this file to GitHub Releases:"
+	@echo "https://github.com/drax2gma/stapply/releases/new"
