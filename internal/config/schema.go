@@ -67,9 +67,9 @@ func (a *App) GetOrderedSteps() []Step {
 
 // AgentConfig holds agent-specific configuration.
 type AgentConfig struct {
-	AgentID   string
-	NatsURL   string
-	NatsCreds string
+	AgentID    string
+	NatsServer string // FQDN only, normalized to URL by agent
+	NatsCreds  string
 }
 
 // ParseAgentConfig parses an agent configuration file.
@@ -85,9 +85,9 @@ func ParseAgentConfig(path string) (*AgentConfig, error) {
 	}
 
 	return &AgentConfig{
-		AgentID:   agent["agent_id"],
-		NatsURL:   withDefault(agent["nats_url"], "nats://localhost:4222"),
-		NatsCreds: agent["nats_creds"],
+		AgentID:    agent["agent_id"],
+		NatsServer: withDefault(agent["nats_server"], "localhost"),
+		NatsCreds:  agent["nats_creds"],
 	}, nil
 }
 

@@ -41,8 +41,8 @@ func main() {
 	}
 
 	// Validate NATS URL for network security
-	cfg.NatsURL = netutil.NormalizeNATSURL(cfg.NatsURL)
-	if err := netutil.ValidateNATSURL(cfg.NatsURL, *allowPublic); err != nil {
+	natsURL := netutil.NormalizeNATSURL(cfg.NatsServer)
+	if err := netutil.ValidateNATSURL(natsURL, *allowPublic); err != nil {
 		log.Fatalf("NATS URL validation failed: %v", err)
 	}
 
@@ -67,7 +67,7 @@ func main() {
 		opts = append(opts, nats.UserCredentials(cfg.NatsCreds))
 	}
 
-	nc, err := nats.Connect(cfg.NatsURL, opts...)
+	nc, err := nats.Connect(natsURL, opts...)
 	if err != nil {
 		log.Fatalf("Failed to connect to NATS: %v", err)
 	}

@@ -97,11 +97,25 @@ func (c *Config) setKeyValue(section, name, key, value string, lineNum int) erro
 		case "apps":
 			env.Apps = parseList(value)
 		case "concurrency":
-			n, err := strconv.Atoi(value)
-			if err != nil {
-				return fmt.Errorf("line %d: invalid concurrency value: %s", lineNum, value)
+			// Accept boolean (true=5, false=1) or number
+			switch strings.ToLower(value) {
+			case "true", "yes", "on":
+				env.Concurrency = 5 // Max parallel when enabled
+			case "false", "no", "off":
+				env.Concurrency = 1 // Sequential
+			default:
+				n, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("line %d: invalid concurrency value: %s (use true/false or number)", lineNum, value)
+				}
+				if n > 5 {
+					n = 5 // Cap at 5
+				}
+				if n < 1 {
+					n = 1
+				}
+				env.Concurrency = n
 			}
-			env.Concurrency = n
 		default:
 			return fmt.Errorf("line %d: unknown env key: %s", lineNum, key)
 		}
@@ -161,6 +175,43 @@ func parseList(value string) []string {
 	return result
 }
 
+// shellTokenize splits a string into tokens, respecting quoted strings.
+// Supports both single and double quotes.
+func shellTokenize(input string) []string {
+	var tokens []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, ch := range input {
+		switch {
+		case (ch == '"' || ch == '\'') && !inQuote:
+			// Start quote
+			inQuote = true
+			quoteChar = ch
+		case ch == quoteChar && inQuote:
+			// End quote
+			inQuote = false
+			quoteChar = 0
+		case ch == ' ' && !inQuote:
+			// Token separator (only outside quotes)
+			if current.Len() > 0 {
+				tokens = append(tokens, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(ch)
+		}
+	}
+
+	// Don't forget the last token
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+
+	return tokens
+}
+
 // parseStep parses a step value like "cmd:apt-get install -y nginx" or "write_file:/path/to/file mode=0644".
 func parseStep(value string) (Step, error) {
 	idx := strings.Index(value, ":")
@@ -185,7 +236,8 @@ func parseStep(value string) (Step, error) {
 
 	case "write_file", "template_file":
 		// For file actions, first token is path, rest are key=value pairs
-		parts := strings.Fields(args)
+		// Use shellTokenize to respect quoted values with spaces
+		parts := shellTokenize(args)
 		if len(parts) == 0 {
 			return Step{}, fmt.Errorf("missing path for %s action", action)
 		}

@@ -187,7 +187,7 @@ step3=cmd:systemctl start nginx
 ```ini
 [agent]
 agent_id=web1
-nats_url=nats://nats.example.com:4222
+nats_server=nats.example.com
 nats_creds=/etc/sapply/nats.creds
 ```
 

@@ -82,7 +82,7 @@ echo "📝 Creating agent configuration..."
 cat > "$CONFIG_DIR/agent.ini" <<EOF
 [agent]
 agent_id=$AGENT_ID
-nats_url=$NATS_URL
+nats_server=$NATS_URL
 EOF
 
 # Add nats_creds if provided
