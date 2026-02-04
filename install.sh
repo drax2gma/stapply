@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sapply Agent Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/drax2gma/stapply/main/install.sh | sudo bash -s -- --agent-id <id> --nats-url <url>
+# Usage: curl -fsSL https://raw.githubusercontent.com/drax2gma/stapply/main/install.sh | sudo bash -s -- --nats-server <fqdn>
 
 set -e
 
@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
             AGENT_ID="$2"
             shift 2
             ;;
-        --nats-url)
+        --nats-server)
             NATS_URL="$2"
             shift 2
             ;;
@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--agent-id <id>] [--nats-url <url>] [--nats-creds <path>]"
+            echo "Usage: $0 [--agent-id <id>] [--nats-server <fqdn>] [--nats-creds <path>]"
             exit 1
             ;;
     esac
