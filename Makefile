@@ -17,11 +17,13 @@ build: build-agent build-ctl
 build-agent:
 	@mkdir -p $(BINARY_DIR)
 	$(GO) build $(GOFLAGS) -o $(AGENT_BINARY) ./cmd/sapply-agent
+	upx --best --lzma $(AGENT_BINARY)
 
 # Build controller
 build-ctl:
 	@mkdir -p $(BINARY_DIR)
 	$(GO) build $(GOFLAGS) -o $(CTL_BINARY) ./cmd/sapply-ctl
+	upx --best --lzma $(CTL_BINARY)
 
 # Run tests
 test:
@@ -63,6 +65,7 @@ deps:
 release:
 	@mkdir -p $(BINARY_DIR)
 	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/sapply-agent ./cmd/sapply-agent
+	upx --best --lzma $(BINARY_DIR)/sapply-agent
 	@echo "✅ Release binary created: $(BINARY_DIR)/sapply-agent"
 	@echo "   OS: linux"
 	@echo "   Arch: amd64"
