@@ -178,6 +178,10 @@ step2=cmd:systemctl enable nginx
 step3=cmd:systemctl start nginx
 ```
 
+> **Note:** The INI parser reads files line-by-line. **Multiline values are NOT supported.**
+> Long commands or file contents must be on a single line. Turn off "line wrap" in your editor when editing config files.
+> For complex file content, use `template_file` with an external file instead of `write_file` with inline content.
+
 ### Agent Config (`agent.ini`)
 
 ```ini
