@@ -38,6 +38,7 @@ The `sapply-agent` is a standalone Go binary with **no external NATS package ins
 **Network security:**
 
 By default, NATS connections are restricted to private networks only:
+
 - `127.0.0.0/8` (localhost)
 - `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` (private LAN)
 - `100.64.0.0/10` (CGNAT/Tailscale)
@@ -103,6 +104,49 @@ make build
 # Restart a service
 ./bin/sapply-ctl adhoc -c examples/sapply.ini -e dev systemd restart nginx
 ```
+
+## Agent Updates
+
+Sapply supports live updates of running agents without SSH access.
+
+### Version Checking
+
+Agents automatically check their version on each ping:
+
+```bash
+./bin/sapply-ctl ping web1
+# Agent logs: ⚠️ Version mismatch: agent=0.0.9, controller=0.1.0
+```
+
+### Updating Agents
+
+Update a running agent to match controller version:
+
+```bash
+# Update agent (NATS defaults to agent hostname)
+./bin/sapply-ctl update web1
+
+# Specify NATS server explicitly
+./bin/sapply-ctl update -nats nats.example.com web1
+```
+
+**How it works:**
+
+1. Controller sends update request with target version and binary URL
+2. Agent downloads new binary from repo (`/bin/sapply-agent`)
+3. Agent replaces its binary and restarts:
+   - **Systemd**: Exits cleanly for systemd restart
+   - **Manual/dev**: Uses `execve` to restart in-place
+
+**Requirements:**
+
+- Agent must be running and connected to NATS
+- For stopped agents, use SSH or re-run install script
+
+**Compatibility:**
+
+- Agents must be ≤ controller version
+- Same MAJOR version = compatible
 
 ## Configuration
 
