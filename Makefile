@@ -49,6 +49,9 @@ ping-local: build-ctl
 run-dev: build-ctl
 	./$(CTL_BINARY) run -c examples/sapply.ini -e dev
 
+adhoc-test: build-ctl
+	./$(CTL_BINARY) adhoc -c examples/sapply.ini -e dev cmd 'uname -a'
+
 # Go module maintenance
 tidy:
 	$(GO) mod tidy

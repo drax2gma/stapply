@@ -12,6 +12,7 @@ import (
 
 	"github.com/drax2gma/stapply/internal/actions"
 	"github.com/drax2gma/stapply/internal/config"
+	"github.com/drax2gma/stapply/internal/netutil"
 	"github.com/drax2gma/stapply/internal/protocol"
 	"github.com/nats-io/nats.go"
 )
@@ -22,6 +23,7 @@ var startTime = time.Now()
 
 func main() {
 	configPath := flag.String("config", "/etc/sapply/agent.ini", "Path to agent configuration file")
+	allowPublic := flag.Bool("allow-public", false, "Allow connection to public NATS servers (insecure)")
 	flag.Parse()
 
 	// Load configuration
@@ -32,6 +34,11 @@ func main() {
 
 	if cfg.AgentID == "" {
 		log.Fatal("agent_id is required in configuration")
+	}
+
+	// Validate NATS URL for network security
+	if err := netutil.ValidateNATSURL(cfg.NatsURL, *allowPublic); err != nil {
+		log.Fatalf("NATS URL validation failed: %v", err)
 	}
 
 	log.Printf("Starting sapply-agent version %s (agent_id=%s)", Version, cfg.AgentID)
