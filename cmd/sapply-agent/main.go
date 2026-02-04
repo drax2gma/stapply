@@ -33,10 +33,15 @@ func main() {
 	}
 
 	if cfg.AgentID == "" {
-		log.Fatal("agent_id is required in configuration")
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Fatalf("agent_id is missing and could not determine hostname: %v", err)
+		}
+		cfg.AgentID = hostname
 	}
 
 	// Validate NATS URL for network security
+	cfg.NatsURL = netutil.NormalizeNATSURL(cfg.NatsURL)
 	if err := netutil.ValidateNATSURL(cfg.NatsURL, *allowPublic); err != nil {
 		log.Fatalf("NATS URL validation failed: %v", err)
 	}

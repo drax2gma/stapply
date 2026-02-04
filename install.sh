@@ -5,7 +5,7 @@
 set -e
 
 # Default values
-AGENT_ID=""
+AGENT_ID="$(hostname)"
 NATS_URL="nats://localhost:4222"
 NATS_CREDS=""
 INSTALL_DIR="/usr/local/bin"
@@ -34,18 +34,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 --agent-id <id> [--nats-url <url>] [--nats-creds <path>]"
+            echo "Usage: $0 [--agent-id <id>] [--nats-url <url>] [--nats-creds <path>]"
             exit 1
             ;;
     esac
 done
-
-# Validate required arguments
-if [ -z "$AGENT_ID" ]; then
-    echo "Error: --agent-id is required"
-    echo "Usage: $0 --agent-id <id> [--nats-url <url>] [--nats-creds <path>]"
-    exit 1
-fi
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
