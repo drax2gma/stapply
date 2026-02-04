@@ -45,7 +45,7 @@ func cmdUpdate(args []string) {
 	}
 	defer nc.Close()
 
-	fmt.Printf("🔄 Updating agent %s to version %s\\n", agentID, Version)
+	fmt.Printf("🔄 Updating agent %s to version %s\n", agentID, Version)
 
 	// Build binary URL (repo-based distribution)
 	binaryURL := "https://raw.githubusercontent.com/drax2gma/stapply/main/bin/sapply-agent"
@@ -62,7 +62,7 @@ func cmdUpdate(args []string) {
 	msg, err := nc.Request(subject, data, *timeout)
 	if err != nil {
 		if err == nats.ErrTimeout {
-			fmt.Printf("❌ Agent %s: timeout (no response within %s)\\n", agentID, *timeout)
+			fmt.Printf("❌ Agent %s: timeout (no response within %s)\n", agentID, *timeout)
 			os.Exit(1)
 		}
 		log.Fatalf("Request failed: %v", err)
@@ -75,9 +75,9 @@ func cmdUpdate(args []string) {
 	}
 
 	if resp.Success {
-		fmt.Printf("✅ %s\\n", resp.Message)
+		fmt.Printf("✅ %s\n", resp.Message)
 	} else {
-		fmt.Printf("❌ Update failed: %s\\n", resp.Error)
+		fmt.Printf("❌ Update failed: %s\n", resp.Error)
 		os.Exit(1)
 	}
 }
