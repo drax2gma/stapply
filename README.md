@@ -97,8 +97,18 @@ make build
 
 ### Ad-hoc Command (No Config File Needed)
 
+Run commands on specific agents without a config file:
+
 ```bash
-# Execute single command across all hosts in environment
+# Run shell command on specific agent (uses agent_id as NATS server by default)
+./bin/sapply-ctl adhoc -e mini cmd 'w'
+./bin/sapply-ctl adhoc -e mini cmd 'ls -la /etc'
+./bin/sapply-ctl adhoc -e mini cmd 'cat /etc/*ease'
+
+# Specify NATS server explicitly
+./bin/sapply-ctl adhoc -nats nats.example.com -e web1 cmd 'uname -a'
+
+# Execute across all hosts in environment (requires config file)
 ./bin/sapply-ctl adhoc -c examples/sapply.ini -e dev cmd 'uname -a'
 
 # Restart a service
