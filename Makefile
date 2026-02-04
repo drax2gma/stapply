@@ -64,9 +64,13 @@ deps:
 # Create release binary for Linux AMD64
 release:
 	@mkdir -p $(BINARY_DIR)
+	@rm -f $(BINARY_DIR)/sapply-agent $(BINARY_DIR)/sapply-ctl
 	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/sapply-agent ./cmd/sapply-agent
 	upx --best --lzma $(BINARY_DIR)/sapply-agent
+	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/sapply-ctl ./cmd/sapply-ctl
+	upx --best --lzma $(BINARY_DIR)/sapply-ctl
 	@echo "✅ Release binary created: $(BINARY_DIR)/sapply-agent"
+	@echo "✅ Release binary created: $(BINARY_DIR)/sapply-ctl"
 	@echo "   OS: linux"
 	@echo "   Arch: amd64"
 	@echo ""
