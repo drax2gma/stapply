@@ -55,6 +55,15 @@ echo "📁 Creating directories..."
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$INSTALL_DIR"
 
+# Stop service if running (to avoid "Text file busy" error)
+if systemctl is-active --quiet sapply-agent 2>/dev/null; then
+    echo "🛑 Stopping existing sapply-agent service..."
+    systemctl stop sapply-agent
+    SERVICE_WAS_RUNNING=true
+else
+    SERVICE_WAS_RUNNING=false
+fi
+
 # Download binary
 echo "⬇️  Downloading sapply-agent..."
 if command -v wget >/dev/null 2>&1; then
