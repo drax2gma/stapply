@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"syscall"
 
 	"github.com/drax2gma/stapply/internal/protocol"
 	"github.com/nats-io/nats.go"
@@ -78,13 +79,31 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 	}
 	sendUpdateResponse(msg, resp)
 
-	log.Printf("✅ Binary replaced, exiting for systemd restart...")
+	log.Printf("✅ Binary replaced")
 
-	// Drain and close NATS connection
+	// Drain NATS connection
 	nc.Drain()
 
-	// Exit - systemd will restart us
-	os.Exit(0)
+	// Check if running under systemd
+	if isRunningUnderSystemd() {
+		log.Printf("Running under systemd, exiting for restart...")
+		os.Exit(0)
+	} else {
+		log.Printf("Not running under systemd, restarting in-place...")
+		// Get current executable path and args
+		executable, err := os.Executable()
+		if err != nil {
+			log.Printf("Failed to get executable path: %v", err)
+			os.Exit(1)
+		}
+
+		// Restart using execve (replace current process)
+		err = syscall.Exec(executable, os.Args, os.Environ())
+		if err != nil {
+			log.Printf("Failed to restart: %v", err)
+			os.Exit(1)
+		}
+	}
 }
 
 func sendUpdateResponse(msg *nats.Msg, resp *protocol.UpdateResponse) {
@@ -117,4 +136,20 @@ func downloadBinary(url, destPath string) error {
 
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+// isRunningUnderSystemd checks if the agent is running under systemd
+func isRunningUnderSystemd() bool {
+	// Check for INVOCATION_ID environment variable (set by systemd)
+	if os.Getenv("INVOCATION_ID") != "" {
+		return true
+	}
+
+	// Check if parent process is systemd (PID 1 or name contains "systemd")
+	ppid := os.Getppid()
+	if ppid == 1 {
+		return true
+	}
+
+	return false
 }
