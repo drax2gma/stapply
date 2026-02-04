@@ -15,7 +15,7 @@ Minimal, agent-based remote automation utility written in Go. Replaces SSH-based
 ### Prerequisites
 
 - Go 1.21+
-- NATS server running (e.g., `nats-server` via Homebrew)
+- NATS server running (e.g., `apt install nats-server` or via Docker)
 
 ### Agent Requirements (Target Nodes)
 
