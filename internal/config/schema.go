@@ -86,7 +86,7 @@ func ParseAgentConfig(path string) (*AgentConfig, error) {
 
 	return &AgentConfig{
 		AgentID:    agent["agent_id"],
-		NatsServer: withDefault(agent["nats_server"], "localhost"),
+		NatsServer: agent["nats_server"],
 		NatsCreds:  agent["nats_creds"],
 	}, nil
 }

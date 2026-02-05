@@ -17,6 +17,24 @@ import (
 
 const Version = "0.1.0"
 
+func getDefaultNATSURL() string {
+	val := os.Getenv("STAPPLY_DEFAULT_NATS")
+	if val == "" {
+		return ""
+	}
+
+	// Validate: Must have dots (FQDN) or be a valid IP
+	// Simple check for dots first
+	if !strings.Contains(val, ".") && !strings.Contains(val, ":") {
+		// Single word like "localhost" is strictly forbidden by requirements "MUST be an FQDN with dots"
+		// But wait, IPv6 has colons.
+		log.Fatalf("Invalid STAPPLY_DEFAULT_NATS: %q. Must be an FQDN with dots or an IP address.", val)
+	}
+
+	// Further validation could use netutil but this basic check covers the specific user request "dots in it".
+	return val
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -107,7 +125,8 @@ func printUsage() {
 
 func cmdPing(args []string) {
 	fs := flag.NewFlagSet("ping", flag.ExitOnError)
-	natsURL := fs.String("nats", "", "NATS server (FQDN or IP)")
+	defaultNats := getDefaultNATSURL()
+	natsURL := fs.String("nats", defaultNats, "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
 	fs.Parse(args)
@@ -146,7 +165,10 @@ func cmdPing(args []string) {
 
 	// Send request
 	subject := "stapply.ping." + agentID
+	start := time.Now()
 	msg, err := nc.Request(subject, data, *timeout)
+	rtt := time.Since(start)
+
 	if err != nil {
 		if err == nats.ErrTimeout {
 			fmt.Printf("❌ Agent %s: timeout (no response within %s)\n", agentID, *timeout)
@@ -161,13 +183,15 @@ func cmdPing(args []string) {
 		log.Fatalf("Failed to parse response: %v", err)
 	}
 
-	fmt.Printf("✅ Agent %s: version=%s uptime=%ds\n",
-		resp.AgentID, resp.Version, resp.UptimeSeconds)
+	uptimeDur := time.Duration(resp.UptimeSeconds) * time.Second
+	fmt.Printf("✅ Agent %s: version=%s uptime=%s cpu=%.1f%% mem=%.1f%% rtt=%v\n",
+		resp.AgentID, resp.Version, uptimeDur, resp.CPUUsage, resp.MemoryUsage, rtt.Round(time.Millisecond))
 }
 
 func cmdDiscover(args []string) {
 	fs := flag.NewFlagSet("discover", flag.ExitOnError)
-	natsURL := fs.String("nats", "", "NATS server (FQDN or IP)")
+	defaultNats := getDefaultNATSURL()
+	natsURL := fs.String("nats", defaultNats, "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
 	fs.Parse(args)
@@ -237,7 +261,13 @@ func cmdAdhoc(args []string) {
 	fs := flag.NewFlagSet("adhoc", flag.ExitOnError)
 	configPath := fs.String("c", "", "Path to configuration file")
 	envName := fs.String("e", "", "Environment name")
-	natsURL := fs.String("nats", "nats://localhost:4222", "NATS server URL")
+
+	defaultNats := getDefaultNATSURL()
+	if defaultNats == "" {
+		defaultNats = "nats://localhost:4222"
+	}
+	natsURL := fs.String("nats", defaultNats, "NATS server URL")
+
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
 	fs.Parse(args)
@@ -450,7 +480,13 @@ func cmdRun(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	configPath := fs.String("c", "", "Path to configuration file")
 	envName := fs.String("e", "", "Environment name")
-	natsURL := fs.String("nats", "nats://localhost:4222", "NATS server URL")
+
+	defaultNats := getDefaultNATSURL()
+	if defaultNats == "" {
+		defaultNats = "nats://localhost:4222"
+	}
+	natsURL := fs.String("nats", defaultNats, "NATS server URL")
+
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
 	fs.Parse(args)
@@ -630,7 +666,13 @@ func cmdPreflight(args []string) {
 	fs := flag.NewFlagSet("preflight", flag.ExitOnError)
 	configPath := fs.String("c", "", "Path to configuration file")
 	envName := fs.String("e", "", "Environment name")
-	natsURL := fs.String("nats", "nats://localhost:4222", "NATS server URL")
+
+	defaultNats := getDefaultNATSURL()
+	if defaultNats == "" {
+		defaultNats = "nats://localhost:4222"
+	}
+	natsURL := fs.String("nats", defaultNats, "NATS server URL")
+
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
 	fs.Parse(args)

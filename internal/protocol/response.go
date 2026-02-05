@@ -12,10 +12,12 @@ const (
 
 // PingResponse is the response to a ping request.
 type PingResponse struct {
-	RequestID     string `json:"request_id"`
-	AgentID       string `json:"agent_id"`
-	Version       string `json:"version"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
+	RequestID     string  `json:"request_id"`
+	AgentID       string  `json:"agent_id"`
+	Version       string  `json:"version"`
+	UptimeSeconds int64   `json:"uptime_seconds"`
+	CPUUsage      float64 `json:"cpu_usage"`    // Percentage
+	MemoryUsage   float64 `json:"memory_usage"` // Percentage
 }
 
 // DiscoverResponse contains system facts.
@@ -45,12 +47,14 @@ type RunResponse struct {
 }
 
 // NewPingResponse creates a ping response.
-func NewPingResponse(requestID, agentID, version string, uptimeSeconds int64) *PingResponse {
+func NewPingResponse(requestID, agentID, version string, uptimeSeconds int64, cpu, mem float64) *PingResponse {
 	return &PingResponse{
 		RequestID:     requestID,
 		AgentID:       agentID,
 		Version:       version,
 		UptimeSeconds: uptimeSeconds,
+		CPUUsage:      cpu,
+		MemoryUsage:   mem,
 	}
 }
 

@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,7 +25,11 @@ import (
 
 const Version = "0.1.0"
 
-var startTime = time.Now()
+var (
+	startTime = time.Now()
+	cpuUsage  float64
+	cpuMutex  sync.Mutex
+)
 
 func main() {
 	configPath := flag.String("config", "/etc/stapply/agent.ini", "Path to agent configuration file")
@@ -39,6 +48,19 @@ func main() {
 			log.Fatalf("agent_id is missing and could not determine hostname: %v", err)
 		}
 		cfg.AgentID = hostname
+	}
+
+	// Handle STAPPLY_DEFAULT_NATS fallback
+	if cfg.NatsServer == "" {
+		if val := os.Getenv("STAPPLY_DEFAULT_NATS"); val != "" {
+			// Validate: Must have dots (FQDN) or be a valid IP
+			if !strings.Contains(val, ".") && !strings.Contains(val, ":") {
+				log.Fatalf("Invalid STAPPLY_DEFAULT_NATS: %q. Must be an FQDN with dots or an IP address.", val)
+			}
+			cfg.NatsServer = val
+		} else {
+			cfg.NatsServer = "localhost"
+		}
 	}
 
 	// Validate NATS URL for network security
@@ -117,6 +139,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to subscribe to %s: %v", discoverSubject, err)
 	}
+	// Start CPU monitoring
+	go monitorCPU()
+
 	log.Printf("Subscribed to %s", discoverSubject)
 
 	// Wait for shutdown signal
@@ -155,11 +180,19 @@ func handlePing(msg *nats.Msg, agentID string) {
 		}
 	}
 
+	cpuMutex.Lock()
+	cpu := cpuUsage
+	cpuMutex.Unlock()
+
+	mem := getMemoryUsagePercentage()
+
 	resp := protocol.NewPingResponse(
 		req.RequestID,
 		agentID,
 		Version,
 		int64(time.Since(startTime).Seconds()),
+		cpu,
+		mem,
 	)
 
 	data, err := json.Marshal(resp)
@@ -223,4 +256,88 @@ func handleDiscover(msg *nats.Msg, agentID string) {
 	if err := msg.Respond(data); err != nil {
 		log.Printf("Failed to send discover response: %v", err)
 	}
+}
+
+func monitorCPU() {
+	prevIdle := uint64(0)
+	prevTotal := uint64(0)
+
+	for {
+		idle, total := getCPUSample()
+		diffIdle := float64(idle - prevIdle)
+		diffTotal := float64(total - prevTotal)
+
+		if diffTotal > 0 && prevTotal > 0 {
+			usage := (diffTotal - diffIdle) / diffTotal * 100
+			cpuMutex.Lock()
+			cpuUsage = usage
+			cpuMutex.Unlock()
+		}
+
+		prevIdle = idle
+		prevTotal = total
+
+		time.Sleep(3 * time.Second)
+	}
+}
+
+func getCPUSample() (idle, total uint64) {
+	contents, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(contents), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == "cpu" {
+			numFields := len(fields)
+			for i := 1; i < numFields; i++ {
+				val, _ := strconv.ParseUint(fields[i], 10, 64)
+				total += val
+				if i == 4 { // idle is the 5th field (index 4)
+					idle = val
+				}
+			}
+			return
+		}
+	}
+	return
+}
+
+func getMemoryUsagePercentage() float64 {
+	f, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	var total, free uint64
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+
+		key := parts[0]
+		val := parts[1]
+		var v uint64
+		fmt.Sscanf(val, "%d", &v)
+
+		switch key {
+		case "MemTotal:":
+			total = v
+		case "MemAvailable:":
+			free = v
+		}
+	}
+
+	if total == 0 {
+		return 0
+	}
+
+	used := total - free
+	return float64(used) / float64(total) * 100
 }
