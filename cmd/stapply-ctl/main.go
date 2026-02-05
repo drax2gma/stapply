@@ -9,9 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"io"
+	"math"
+
 	"github.com/drax2gma/stapply/internal/config"
 	"github.com/drax2gma/stapply/internal/netutil"
 	"github.com/drax2gma/stapply/internal/protocol"
+	"github.com/drax2gma/stapply/internal/security"
 	"github.com/nats-io/nats.go"
 )
 
@@ -129,6 +136,7 @@ func cmdPing(args []string) {
 	natsURL := fs.String("nats", defaultNats, "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
+	secretKey := fs.String("sec", "", "Shared secret key for encryption")
 	fs.Parse(args)
 
 	if fs.NArg() < 1 {
@@ -166,6 +174,15 @@ func cmdPing(args []string) {
 	// Send request
 	subject := "stapply.ping." + agentID
 	start := time.Now()
+
+	if *secretKey != "" {
+		var err error
+		data, err = security.Encrypt(data, *secretKey)
+		if err != nil {
+			log.Fatalf("Failed to encrypt request: %v", err)
+		}
+	}
+
 	msg, err := nc.Request(subject, data, *timeout)
 	rtt := time.Since(start)
 
@@ -178,6 +195,14 @@ func cmdPing(args []string) {
 	}
 
 	// Parse response
+	if *secretKey != "" {
+		var err error
+		msg.Data, err = security.Decrypt(msg.Data, *secretKey)
+		if err != nil {
+			log.Fatalf("Failed to decrypt response: %v", err)
+		}
+	}
+
 	var resp protocol.PingResponse
 	if err := json.Unmarshal(msg.Data, &resp); err != nil {
 		log.Fatalf("Failed to parse response: %v", err)
@@ -194,6 +219,7 @@ func cmdDiscover(args []string) {
 	natsURL := fs.String("nats", defaultNats, "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
+	secretKey := fs.String("sec", "", "Shared secret key for encryption")
 	fs.Parse(args)
 
 	if fs.NArg() < 1 {
@@ -228,7 +254,21 @@ func cmdDiscover(args []string) {
 		log.Fatalf("Failed to marshal request: %v", err)
 	}
 
+	// Determine effective secret key
+	effectiveKey := *secretKey
+	if effectiveKey == "" {
+		effectiveKey = os.Getenv("STAPPLY_SHARED_KEY")
+	}
+
 	// Send request
+	if effectiveKey != "" {
+		var err error
+		data, err = security.Encrypt(data, effectiveKey)
+		if err != nil {
+			log.Fatalf("Failed to encrypt request: %v", err)
+		}
+	}
+
 	subject := "stapply.discover." + agentID
 	msg, err := nc.Request(subject, data, *timeout)
 	if err != nil {
@@ -240,6 +280,14 @@ func cmdDiscover(args []string) {
 	}
 
 	// Parse response
+	if effectiveKey != "" {
+		var err error
+		msg.Data, err = security.Decrypt(msg.Data, effectiveKey)
+		if err != nil {
+			log.Fatalf("Failed to decrypt response: %v", err)
+		}
+	}
+
 	var resp protocol.DiscoverResponse
 	if err := json.Unmarshal(msg.Data, &resp); err != nil {
 		log.Fatalf("Failed to parse response: %v", err)
@@ -270,6 +318,7 @@ func cmdAdhoc(args []string) {
 
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
+	secretKey := fs.String("sec", "", "Shared secret key for encryption")
 	fs.Parse(args)
 
 	// Validate NATS URL
@@ -314,6 +363,11 @@ func cmdAdhoc(args []string) {
 			log.Fatalf("Environment not found: %s", *envName)
 		}
 		hosts = env.Hosts
+
+		// Determine effective secret key
+		if *secretKey == "" {
+			*secretKey = os.Getenv("STAPPLY_SHARED_KEY")
+		}
 	} else {
 		// Direct mode: treat envName as agent_id
 		hosts = []string{*envName}
@@ -409,6 +463,16 @@ func cmdAdhoc(args []string) {
 				return
 			}
 
+			if *secretKey != "" {
+				var err error
+				data, err = security.Encrypt(data, *secretKey)
+				if err != nil {
+					fmt.Printf("   ❌ Encrypt error: %v\n", err)
+					resultCh <- result{failed: 1}
+					return
+				}
+			}
+
 			subject := "stapply.run." + agentID
 			msg, err := nc.Request(subject, data, *timeout)
 			if err != nil {
@@ -422,6 +486,16 @@ func cmdAdhoc(args []string) {
 			}
 
 			var resp protocol.RunResponse
+			if *secretKey != "" {
+				var err error
+				msg.Data, err = security.Decrypt(msg.Data, *secretKey)
+				if err != nil {
+					fmt.Printf("   ❌ Decrypt error: %v\n", err)
+					resultCh <- result{failed: 1}
+					return
+				}
+			}
+
 			if err := json.Unmarshal(msg.Data, &resp); err != nil {
 				fmt.Printf("   ❌ Response parse error: %v\n", err)
 				resultCh <- result{failed: 1}
@@ -489,6 +563,7 @@ func cmdRun(args []string) {
 
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
+	secretKey := fs.String("sec", "", "Shared secret key for encryption")
 	fs.Parse(args)
 
 	// Validate NATS URL
@@ -553,7 +628,14 @@ func cmdRun(args []string) {
 		// Acquire semaphore
 		semaphore <- struct{}{}
 
-		go func(hID string) {
+		// Determine effective secret key for this run
+		// Priority: 1. Flag, 2. Env Var
+		effectiveKey := *secretKey
+		if effectiveKey == "" {
+			effectiveKey = os.Getenv("STAPPLY_SHARED_KEY")
+		}
+
+		go func(hID, key string) {
 			defer func() { <-semaphore }() // Release semaphore
 
 			var ok, changed, failed int
@@ -593,12 +675,50 @@ func cmdRun(args []string) {
 						stepArgs = make(map[string]string)
 					}
 
+					if step.Action == "cmd" {
+						cmdStr := stepArgs["command"]
+						if strings.HasPrefix(cmdStr, "STAPPLY_ACTION: deploy_artifact") {
+							// Parse args from string: src=... dest=...
+							kvText := strings.TrimPrefix(cmdStr, "STAPPLY_ACTION: deploy_artifact ")
+							artifactArgs := parseKVString(kvText)
+
+							src := artifactArgs["src"]
+							dest := artifactArgs["dest"]
+
+							if src == "" || dest == "" {
+								fmt.Printf("         ❌ Invalid deploy_artifact args: %s\n", kvText)
+								failed++
+								continue
+							}
+
+							fmt.Printf("         📦 Deploying artifact: %s -> %s\n", src, dest)
+
+							if err := runDeployArtifact(nc, agentID, src, dest, *timeout, key); err != nil {
+								fmt.Printf("         ❌ Artifact deployment failed: %v\n", err)
+								failed++
+							} else {
+								fmt.Printf("         ✅ Artifact deployed successfully\n")
+							}
+							continue
+						}
+					}
+
 					req := protocol.NewRunRequest(step.Action, stepArgs, int(*timeout/time.Millisecond), false)
 					data, err := json.Marshal(req)
 					if err != nil {
 						fmt.Printf("         ❌ Marshal error: %v\n", err)
 						failed++
 						continue
+					}
+
+					if key != "" {
+						var err error
+						data, err = security.Encrypt(data, key)
+						if err != nil {
+							fmt.Printf("         ❌ Encrypt error: %v\n", err)
+							failed++
+							continue
+						}
 					}
 
 					subject := "stapply.run." + agentID
@@ -614,6 +734,16 @@ func cmdRun(args []string) {
 					}
 
 					var resp protocol.RunResponse
+					if key != "" {
+						var err error
+						msg.Data, err = security.Decrypt(msg.Data, key)
+						if err != nil {
+							fmt.Printf("         ❌ Decrypt error: %v\n", err)
+							failed++
+							continue
+						}
+					}
+
 					if err := json.Unmarshal(msg.Data, &resp); err != nil {
 						fmt.Printf("         ❌ Response parse error: %v\n", err)
 						failed++
@@ -641,7 +771,7 @@ func cmdRun(args []string) {
 			fmt.Println()
 
 			resultCh <- result{ok: ok, changed: changed, failed: failed}
-		}(hostID)
+		}(hostID, effectiveKey)
 	}
 
 	// Wait for all hosts to complete
@@ -675,7 +805,12 @@ func cmdPreflight(args []string) {
 
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
-	fs.Parse(args)
+	secretKey := fs.String("sec", "", "Shared secret key for encryption")
+	// Determine effective secret key
+	effectiveKey := *secretKey
+	if effectiveKey == "" {
+		effectiveKey = os.Getenv("STAPPLY_SHARED_KEY")
+	}
 
 	// Validate NATS URL
 	*natsURL = netutil.NormalizeNATSURL(*natsURL)
@@ -747,6 +882,16 @@ func cmdPreflight(args []string) {
 				return
 			}
 
+			if effectiveKey != "" {
+				var err error
+				data, err = security.Encrypt(data, *secretKey)
+				if err != nil {
+					fmt.Printf("   ❌ [%s] Encrypt error: %v\n", hID, err)
+					healthCh <- hostHealth{hID, false}
+					return
+				}
+			}
+
 			subject := "stapply.discover." + agentID
 			msg, err := nc.Request(subject, data, *timeout)
 			if err != nil {
@@ -756,6 +901,16 @@ func cmdPreflight(args []string) {
 			}
 
 			var resp protocol.DiscoverResponse
+			if effectiveKey != "" {
+				var err error
+				msg.Data, err = security.Decrypt(msg.Data, effectiveKey)
+				if err != nil {
+					fmt.Printf("   ❌ [%s] Decrypt error: %v\n", hID, err)
+					healthCh <- hostHealth{hID, false}
+					return
+				}
+			}
+
 			if err := json.Unmarshal(msg.Data, &resp); err != nil {
 				fmt.Printf("   ❌ [%s] Response parse error: %v\n", hID, err)
 				healthCh <- hostHealth{hID, false}
@@ -853,6 +1008,16 @@ func cmdPreflight(args []string) {
 						continue
 					}
 
+					if effectiveKey != "" {
+						var err error
+						data, err = security.Encrypt(data, effectiveKey)
+						if err != nil {
+							fmt.Printf("      ❌ Encrypt error: %v\n", err)
+							failed++
+							continue
+						}
+					}
+
 					subject := "stapply.run." + agentID
 					msg, err := nc.Request(subject, data, *timeout)
 					if err != nil {
@@ -862,6 +1027,16 @@ func cmdPreflight(args []string) {
 					}
 
 					var resp protocol.RunResponse
+					if effectiveKey != "" {
+						var err error
+						msg.Data, err = security.Decrypt(msg.Data, effectiveKey)
+						if err != nil {
+							fmt.Printf("      ❌ Decrypt error: %v\n", err)
+							failed++
+							continue
+						}
+					}
+
 					if err := json.Unmarshal(msg.Data, &resp); err != nil {
 						fmt.Printf("      ❌ Step %d: Response error: %v\n", i+1, err)
 						failed++
@@ -906,4 +1081,112 @@ func cmdPreflight(args []string) {
 	} else {
 		fmt.Println("✅ Preflight check PASSED")
 	}
+}
+
+// parseKVString parses "key=value key2=val2" into a map
+func parseKVString(s string) map[string]string {
+	m := make(map[string]string)
+	parts := strings.Fields(s)
+	for _, part := range parts {
+		if idx := strings.Index(part, "="); idx != -1 {
+			k := part[:idx]
+			v := part[idx+1:]
+			m[k] = v
+		}
+	}
+	return m
+}
+
+func runDeployArtifact(nc *nats.Conn, agentID, src, dest string, timeout time.Duration, secretKey string) error {
+	// 1. Open local file
+	f, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open src: %v", err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat src: %v", err)
+	}
+	totalSize := stat.Size()
+
+	// 2. Calculate Checksum
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("calc checksum: %v", err)
+	}
+	checksum := hex.EncodeToString(h.Sum(nil))
+
+	// Reset file pointer
+	if _, err := f.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek: %v", err)
+	}
+
+	// 3. Chunking Loop
+	const chunkSize = 10 * 1024 * 1024 // 10MB
+	totalChunks := int(math.Ceil(float64(totalSize) / float64(chunkSize)))
+
+	buf := make([]byte, chunkSize)
+	for i := 0; i < totalChunks; i++ {
+		n, err := f.Read(buf)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("read chunk %d: %v", i, err)
+		}
+		if n == 0 {
+			break
+		}
+
+		chunkData := buf[:n]
+		encoded := base64.StdEncoding.EncodeToString(chunkData)
+
+		args := map[string]string{
+			"dest":         dest,
+			"chunk_index":  fmt.Sprintf("%d", i),
+			"total_chunks": fmt.Sprintf("%d", totalChunks),
+			"total_size":   fmt.Sprintf("%d", totalSize),
+			"checksum":     checksum,
+			"chunk_data":   encoded,
+			"mode":         "0755", // Default executable
+		}
+
+		req := protocol.NewRunRequest("deploy_artifact", args, int(timeout/time.Millisecond), false)
+		data, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("marshal chunk %d: %v", i, err)
+		}
+
+		if secretKey != "" {
+			data, err = security.Encrypt(data, secretKey)
+			if err != nil {
+				return fmt.Errorf("encrypt chunk %d: %v", i, err)
+			}
+		}
+
+		subject := "stapply.run." + agentID
+		msg, err := nc.Request(subject, data, timeout)
+		if err != nil {
+			return fmt.Errorf("send chunk %d: %v", i, err)
+		}
+
+		var resp protocol.RunResponse
+		if secretKey != "" {
+			msg.Data, err = security.Decrypt(msg.Data, secretKey)
+			if err != nil {
+				return fmt.Errorf("decrypt chunk %d response: %v", i, err)
+			}
+		}
+
+		if err := json.Unmarshal(msg.Data, &resp); err != nil {
+			return fmt.Errorf("parse chunk %d response: %v", i, err)
+		}
+
+		if resp.Status != protocol.StatusOK {
+			return fmt.Errorf("chunk %d failed: %s (stderr: %s)", i, resp.Error, resp.Stderr)
+		}
+
+		fmt.Printf("            Sent chunk %d/%d (%d bytes)\r", i+1, totalChunks, n)
+	}
+	fmt.Println() // Newline after progress
+	return nil
 }

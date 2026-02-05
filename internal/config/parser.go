@@ -149,6 +149,16 @@ func (c *Config) setKeyValue(section, name, key, value string, lineNum int) erro
 			return fmt.Errorf("line %d: unknown app key: %s", lineNum, key)
 		}
 
+	case "security":
+		// Security section is deprecated in config, use STAPPLY_SHARED_KEY env var
+		// We ignore it to avoid breaking old configs immediately, or we could just remove it.
+		// Since we removed the struct, we must not assign to c.Security.
+		if key == "secret_key" {
+			// Ignore
+		} else {
+			return fmt.Errorf("line %d: unknown security key: %s (security section is deprecated)", lineNum, key)
+		}
+
 	case "":
 		return fmt.Errorf("line %d: key outside of section", lineNum)
 

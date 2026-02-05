@@ -10,6 +10,7 @@ import (
 
 	"github.com/drax2gma/stapply/internal/netutil"
 	"github.com/drax2gma/stapply/internal/protocol"
+	"github.com/drax2gma/stapply/internal/security"
 	"github.com/nats-io/nats.go"
 )
 
@@ -19,7 +20,14 @@ func cmdUpdate(args []string) {
 	natsURL := fs.String("nats", defaultNats, "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
+	secretKey := fs.String("sec", "", "Shared secret key for encryption")
 	fs.Parse(args)
+
+	// Determine effective secret key
+	effectiveKey := *secretKey
+	if effectiveKey == "" {
+		effectiveKey = os.Getenv("STAPPLY_SHARED_KEY")
+	}
 
 	if fs.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: stapply-ctl update <agent_id>")
@@ -60,6 +68,15 @@ func cmdUpdate(args []string) {
 
 	// Send update request
 	subject := "stapply.update." + agentID
+
+	if effectiveKey != "" {
+		var err error
+		data, err = security.Encrypt(data, effectiveKey)
+		if err != nil {
+			log.Fatalf("Failed to encrypt request: %v", err)
+		}
+	}
+
 	msg, err := nc.Request(subject, data, *timeout)
 	if err != nil {
 		if err == nats.ErrTimeout {
@@ -70,6 +87,14 @@ func cmdUpdate(args []string) {
 	}
 
 	// Parse response
+	if effectiveKey != "" {
+		var err error
+		msg.Data, err = security.Decrypt(msg.Data, effectiveKey)
+		if err != nil {
+			log.Fatalf("Failed to decrypt response: %v", err)
+		}
+	}
+
 	var resp protocol.UpdateResponse
 	if err := json.Unmarshal(msg.Data, &resp); err != nil {
 		log.Fatalf("Failed to parse response: %v", err)

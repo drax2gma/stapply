@@ -19,6 +19,7 @@ import (
 	"github.com/drax2gma/stapply/internal/config"
 	"github.com/drax2gma/stapply/internal/netutil"
 	"github.com/drax2gma/stapply/internal/protocol"
+	"github.com/drax2gma/stapply/internal/security"
 	"github.com/drax2gma/stapply/internal/sysinfo"
 	"github.com/nats-io/nats.go"
 )
@@ -101,10 +102,16 @@ func main() {
 	// Initialize action registry
 	registry := actions.NewRegistry()
 
+	// Get secret key from environment
+	secretKey := os.Getenv("STAPPLY_SHARED_KEY")
+	if secretKey != "" {
+		log.Printf("Encryption enabled (key provided via STAPPLY_SHARED_KEY)")
+	}
+
 	// Subscribe to ping requests
 	pingSubject := "stapply.ping." + cfg.AgentID
 	_, err = nc.Subscribe(pingSubject, func(msg *nats.Msg) {
-		handlePing(msg, cfg.AgentID)
+		handlePing(msg, cfg.AgentID, secretKey)
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to %s: %v", pingSubject, err)
@@ -114,7 +121,7 @@ func main() {
 	// Subscribe to run requests
 	runSubject := "stapply.run." + cfg.AgentID
 	_, err = nc.Subscribe(runSubject, func(msg *nats.Msg) {
-		handleRun(msg, registry)
+		handleRun(msg, registry, secretKey)
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to %s: %v", runSubject, err)
@@ -124,7 +131,7 @@ func main() {
 	// Subscribe to update requests
 	updateSubject := "stapply.update." + cfg.AgentID
 	_, err = nc.Subscribe(updateSubject, func(msg *nats.Msg) {
-		handleUpdate(msg, cfg.AgentID, nc)
+		handleUpdate(msg, cfg.AgentID, nc, secretKey)
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to %s: %v", updateSubject, err)
@@ -134,7 +141,7 @@ func main() {
 	// Subscribe to discovery requests
 	discoverSubject := "stapply.discover." + cfg.AgentID
 	_, err = nc.Subscribe(discoverSubject, func(msg *nats.Msg) {
-		handleDiscover(msg, cfg.AgentID)
+		handleDiscover(msg, cfg.AgentID, secretKey)
 	})
 	if err != nil {
 		log.Fatalf("Failed to subscribe to %s: %v", discoverSubject, err)
@@ -165,9 +172,19 @@ func main() {
 	log.Println("Agent stopped")
 }
 
-func handlePing(msg *nats.Msg, agentID string) {
+func handlePing(msg *nats.Msg, agentID, secretKey string) {
+	data := msg.Data
+	if secretKey != "" {
+		var err error
+		data, err = security.Decrypt(msg.Data, secretKey)
+		if err != nil {
+			log.Printf("Failed to decrypt ping request: %v", err)
+			return
+		}
+	}
+
 	var req protocol.PingRequest
-	if err := json.Unmarshal(msg.Data, &req); err != nil {
+	if err := json.Unmarshal(data, &req); err != nil {
 		log.Printf("Invalid ping request: %v", err)
 		return
 	}
@@ -195,20 +212,38 @@ func handlePing(msg *nats.Msg, agentID string) {
 		mem,
 	)
 
-	data, err := json.Marshal(resp)
+	respData, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("Failed to marshal ping response: %v", err)
 		return
 	}
 
-	if err := msg.Respond(data); err != nil {
+	if secretKey != "" {
+		respData, err = security.Encrypt(respData, secretKey)
+		if err != nil {
+			log.Printf("Failed to encrypt ping response: %v", err)
+			return
+		}
+	}
+
+	if err := msg.Respond(respData); err != nil {
 		log.Printf("Failed to send ping response: %v", err)
 	}
 }
 
-func handleRun(msg *nats.Msg, registry *actions.Registry) {
+func handleRun(msg *nats.Msg, registry *actions.Registry, secretKey string) {
+	data := msg.Data
+	if secretKey != "" {
+		var err error
+		data, err = security.Decrypt(msg.Data, secretKey)
+		if err != nil {
+			log.Printf("Failed to decrypt run request: %v", err)
+			return
+		}
+	}
+
 	var req protocol.RunRequest
-	if err := json.Unmarshal(msg.Data, &req); err != nil {
+	if err := json.Unmarshal(data, &req); err != nil {
 		log.Printf("Invalid run request: %v", err)
 		return
 	}
@@ -217,13 +252,21 @@ func handleRun(msg *nats.Msg, registry *actions.Registry) {
 
 	resp := registry.Execute(req.RequestID, req.Action, req.Args, req.DryRun)
 
-	data, err := json.Marshal(resp)
+	respData, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("Failed to marshal run response: %v", err)
 		return
 	}
 
-	if err := msg.Respond(data); err != nil {
+	if secretKey != "" {
+		respData, err = security.Encrypt(respData, secretKey)
+		if err != nil {
+			log.Printf("Failed to encrypt run response: %v", err)
+			return
+		}
+	}
+
+	if err := msg.Respond(respData); err != nil {
 		log.Printf("Failed to send run response: %v", err)
 	}
 
@@ -231,9 +274,19 @@ func handleRun(msg *nats.Msg, registry *actions.Registry) {
 		req.Action, resp.Status, resp.Changed, resp.DurationMs)
 }
 
-func handleDiscover(msg *nats.Msg, agentID string) {
+func handleDiscover(msg *nats.Msg, agentID, secretKey string) {
+	data := msg.Data
+	if secretKey != "" {
+		var err error
+		data, err = security.Decrypt(msg.Data, secretKey)
+		if err != nil {
+			log.Printf("Failed to decrypt discover request: %v", err)
+			return
+		}
+	}
+
 	var req protocol.DiscoverRequest
-	if err := json.Unmarshal(msg.Data, &req); err != nil {
+	if err := json.Unmarshal(data, &req); err != nil {
 		log.Printf("Invalid discover request: %v", err)
 		return
 	}
@@ -247,13 +300,21 @@ func handleDiscover(msg *nats.Msg, agentID string) {
 	}
 	resp.RequestID = req.RequestID
 
-	data, err := json.Marshal(resp)
+	respData, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("Failed to marshal discover response: %v", err)
 		return
 	}
 
-	if err := msg.Respond(data); err != nil {
+	if secretKey != "" {
+		respData, err = security.Encrypt(respData, secretKey)
+		if err != nil {
+			log.Printf("Failed to encrypt discover response: %v", err)
+			return
+		}
+	}
+
+	if err := msg.Respond(respData); err != nil {
 		log.Printf("Failed to send discover response: %v", err)
 	}
 }

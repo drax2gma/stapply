@@ -11,12 +11,23 @@ import (
 	"syscall"
 
 	"github.com/drax2gma/stapply/internal/protocol"
+	"github.com/drax2gma/stapply/internal/security"
 	"github.com/nats-io/nats.go"
 )
 
-func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
+func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn, secretKey string) {
+	data := msg.Data
+	if secretKey != "" {
+		var err error
+		data, err = security.Decrypt(msg.Data, secretKey)
+		if err != nil {
+			log.Printf("Failed to decrypt update request: %v", err)
+			return
+		}
+	}
+
 	var req protocol.UpdateRequest
-	if err := json.Unmarshal(msg.Data, &req); err != nil {
+	if err := json.Unmarshal(data, &req); err != nil {
 		log.Printf("Invalid update request: %v", err)
 		return
 	}
@@ -30,7 +41,7 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 			Success:   true,
 			Message:   "Agent already at target version",
 		}
-		sendUpdateResponse(msg, resp)
+		sendUpdateResponse(msg, resp, secretKey)
 		return
 	}
 
@@ -56,7 +67,7 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 			Success:   false,
 			Error:     fmt.Sprintf("download failed: %v", err),
 		}
-		sendUpdateResponse(msg, resp)
+		sendUpdateResponse(msg, resp, secretKey)
 		return
 	}
 
@@ -69,7 +80,7 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 			Success:   false,
 			Error:     fmt.Sprintf("chmod failed: %v", err),
 		}
-		sendUpdateResponse(msg, resp)
+		sendUpdateResponse(msg, resp, secretKey)
 		return
 	}
 
@@ -82,7 +93,7 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 			Success:   false,
 			Error:     fmt.Sprintf("replace failed: %v", err),
 		}
-		sendUpdateResponse(msg, resp)
+		sendUpdateResponse(msg, resp, secretKey)
 		return
 	}
 
@@ -92,7 +103,7 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 		Success:   true,
 		Message:   fmt.Sprintf("Updated to %s, restarting...", req.TargetVersion),
 	}
-	sendUpdateResponse(msg, resp)
+	sendUpdateResponse(msg, resp, secretKey)
 
 	log.Printf("✅ Binary replaced")
 
@@ -121,12 +132,21 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 	}
 }
 
-func sendUpdateResponse(msg *nats.Msg, resp *protocol.UpdateResponse) {
+func sendUpdateResponse(msg *nats.Msg, resp *protocol.UpdateResponse, secretKey string) {
 	data, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("Failed to marshal update response: %v", err)
 		return
 	}
+
+	if secretKey != "" {
+		data, err = security.Encrypt(data, secretKey)
+		if err != nil {
+			log.Printf("Failed to encrypt update response: %v", err)
+			return
+		}
+	}
+
 	if err := msg.Respond(data); err != nil {
 		log.Printf("Failed to send update response: %v", err)
 	}

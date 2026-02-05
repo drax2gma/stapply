@@ -7,8 +7,10 @@ Minimal, agent-based remote automation utility written in Go. Replaces SSH-based
 - **Agent-based**: No SSH dependency; agents run persistently on targets
 - **NATS transport**: Request/reply messaging for reliable communication
 - **Network security**: NATS URLs restricted to private networks (LAN/CGNAT) by default
-- **INI configuration**: Human-editable config with `[env:name]`, `[host:id]`, `[app:name]` sections
+- **INI configuration**: Human-editable config using `.stay.ini` extension
 - **Systemd-native**: Agents managed by systemd for automatic restart
+- **Discovery**: Gather system facts (CPU, memory, disk, IP) from remote nodes
+- **Health Checks**: Preflight validation before deployment
 
 ## Quick Start
 
@@ -43,9 +45,26 @@ By default, NATS connections are restricted to private networks only:
 - `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` (private LAN)
 - `100.64.0.0/10` (CGNAT/Tailscale)
 
+- `100.64.0.0/10` (CGNAT/Tailscale)
+
 Use `--allow-public` flag to override (not recommended for production).
 
-**Deployment**: Just copy the `stapply-agent` binary and systemd unit file. No package installation needed.
+-**Payload Encryption:**
+
+- +All command arguments and outputs are encrypted using AES-GCM when a shared secret key is provided.
+- +### Key Generation
+- +Generate a random 32-byte hex key:
+- +`bash
++openssl rand -hex 32
++`
+- +### Configuration
+- +Set the `STAPPLY_SHARED_KEY` environment variable on both the controller and agent(s):
+- +`bash
++export STAPPLY_SHARED_KEY=your-generated-key-here
++`
+- +**Note:** If the key is missing or mismatched, secure communication will fail.
+
+  **Deployment**: The standard way to deploy is using the one-line quick install command below. For custom setups, standard manual installation steps are also provided.
 
 ## Installation
 
@@ -71,6 +90,10 @@ curl -fsSL https://raw.githubusercontent.com/drax2gma/stapply/main/install.sh | 
 3. Copy systemd unit: `scp systemd/stapply-agent.service root@host:/etc/systemd/system/`
 4. Enable service: `ssh root@host systemctl enable --now stapply-agent`
 
+### Controller Configuration
+
+Controller configuration files **must** have a `.stay.ini` extension.
+
 ### Build
 
 ```bash
@@ -86,13 +109,29 @@ make build
 ### Ping Agent (Terminal 2)
 
 ```bash
-./bin/stapply-ctl ping local
+./bin/stapply-ctl ping web1
 ```
 
 ### Run Deployment
 
 ```bash
-./bin/stapply-ctl run -c examples/stapply.ini -e dev
+./bin/stapply-ctl run -c examples/stapply.stay.ini -e dev
+```
+
+### Preflight Check
+
+Validate system health and connectivity before running a deployment:
+
+```bash
+./bin/stapply-ctl preflight -c examples/stapply.stay.ini -e dev
+```
+
+### Discovery
+
+Gather hardware and network facts from a remote agent:
+
+```bash
+./bin/stapply-ctl discover web1
 ```
 
 ### Ad-hoc Command (No Config File Needed)
@@ -103,16 +142,15 @@ Run commands on specific agents without a config file:
 # Run shell command on specific agent (uses agent_id as NATS server by default)
 ./bin/stapply-ctl adhoc -e mini cmd 'w'
 ./bin/stapply-ctl adhoc -e mini cmd 'ls -la /etc'
-./bin/stapply-ctl adhoc -e mini cmd 'cat /etc/*ease'
 
 # Specify NATS server explicitly
 ./bin/stapply-ctl adhoc -nats nats.example.com -e web1 cmd 'uname -a'
 
 # Execute across all hosts in environment (requires config file)
-./bin/stapply-ctl adhoc -c examples/stapply.ini -e dev cmd 'uname -a'
+./bin/stapply-ctl adhoc -c examples/stapply.stay.ini -e dev cmd 'uname -a'
 
 # Restart a service
-./bin/stapply-ctl adhoc -c examples/stapply.ini -e dev systemd restart nginx
+./bin/stapply-ctl adhoc -c examples/stapply.stay.ini -e dev systemd restart nginx
 ```
 
 ## Agent Updates
@@ -125,7 +163,7 @@ Agents automatically check their version on each ping:
 
 ```bash
 ./bin/stapply-ctl ping web1
-# Agent logs: ⚠️ Version mismatch: agent=0.0.9, controller=0.1.0
+# Agent logs: ⚠️ Version mismatch: agent=0.1.202405201030-a1b2c3d, controller=0.1.202405201100-e5f6g7h
 ```
 
 ### Updating Agents
@@ -156,11 +194,11 @@ Update a running agent to match controller version:
 **Compatibility:**
 
 - Agents must be ≤ controller version
-- Same MAJOR version = compatible
+- Same MAJOR.MINOR version = compatible
 
 ## Configuration
 
-### Controller Config (`stapply.ini`)
+### Controller Config (`stapply.stay.ini`)
 
 ```ini
 [env:prod]
@@ -193,12 +231,13 @@ nats_creds=/etc/stapply/nats.creds
 
 ## Actions
 
-| Action          | Status | Description                                              |
-| --------------- | ------ | -------------------------------------------------------- |
-| `cmd`           | ✅ M1  | Execute shell command                                    |
-| `write_file`    | ✅ M2  | Write content to file with change detection              |
-| `template_file` | ✅ M2  | Render Go template to file                               |
-| `systemd`       | ✅ M3  | Systemd unit control (enable/disable/start/stop/restart) |
+| Action            | Status | Description                                              |
+| ----------------- | ------ | -------------------------------------------------------- |
+| `cmd`             | ✅ M1  | Execute shell command                                    |
+| `write_file`      | ✅ M2  | Write content to file with change detection              |
+| `template_file`   | ✅ M2  | Render Go template to file                               |
+| `systemd`         | ✅ M3  | Systemd unit control (enable/disable/start/stop/restart) |
+| `deploy_artifact` | ✅ M4  | Large binary/file distribution (chunked transfer)        |
 
 ## Project Structure
 
@@ -208,12 +247,12 @@ stapply/
 │   ├── stapply-agent/    # Agent daemon
 │   └── stapply-ctl/      # Controller CLI
 ├── internal/
-│   ├── config/          # INI parser
-│   ├── actions/         # Action executors
+│   ├── config/          # INI parser (requires .stay.ini)
+│   ├── actions/         # Action executors (cmd, file, systemd, artifact)
 │   └── protocol/        # NATS message schemas
 ├── examples/            # Sample configurations
 ├── systemd/             # Systemd unit files
-└── PLAN.md              # High-level design
+└── Makefile             # Build and release orchestration
 ```
 
 ## License

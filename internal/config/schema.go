@@ -84,6 +84,16 @@ func ParseAgentConfig(path string) (*AgentConfig, error) {
 		agent = make(map[string]string)
 	}
 
+	security := cfg["security"]
+	secretKey := ""
+	if security != nil {
+		secretKey = security["secret_key"]
+	}
+	// Fallback to agent section for simplicity
+	if secretKey == "" {
+		secretKey = agent["secret_key"]
+	}
+
 	return &AgentConfig{
 		AgentID:    agent["agent_id"],
 		NatsServer: agent["nats_server"],

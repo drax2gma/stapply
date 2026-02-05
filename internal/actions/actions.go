@@ -23,6 +23,7 @@ func NewRegistry() *Registry {
 	r.Register("write_file", &WriteFileAction{})
 	r.Register("template_file", &TemplateFileAction{})
 	r.Register("systemd", &SystemdAction{})
+	r.Register("deploy_artifact", &DeployArtifactAction{})
 	return r
 }
 
