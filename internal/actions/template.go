@@ -15,7 +15,7 @@ import (
 type TemplateFileAction struct{}
 
 // Execute renders a template and writes to file with change detection.
-func (a *TemplateFileAction) Execute(requestID string, args map[string]string) *protocol.RunResponse {
+func (a *TemplateFileAction) Execute(requestID string, args map[string]string, dryRun bool) *protocol.RunResponse {
 	start := time.Now()
 
 	// Validate required args
@@ -58,6 +58,31 @@ func (a *TemplateFileAction) Execute(requestID string, args map[string]string) *
 
 	// Compute hash of rendered content
 	newHash := computeHash([]byte(renderedContent))
+
+	if dryRun {
+		// Check change status
+		changed := true
+		if existingContent, err := os.ReadFile(path); err == nil {
+			existingHash := computeHash(existingContent)
+			if existingHash == newHash {
+				changed = false
+			}
+		}
+
+		statusMsg := "Dry run: Content match"
+		if changed {
+			statusMsg = "Dry run: Would render template to file"
+		}
+
+		return protocol.NewRunResponse(
+			requestID,
+			changed,
+			0,
+			statusMsg,
+			"",
+			time.Since(start).Milliseconds(),
+		)
+	}
 
 	// Check if file exists and compare hash
 	changed := true

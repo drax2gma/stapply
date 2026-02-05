@@ -2,8 +2,10 @@ package actions
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/drax2gma/stapply/internal/protocol"
@@ -13,13 +15,46 @@ import (
 type CmdAction struct{}
 
 // Execute runs a shell command and returns the result.
-func (a *CmdAction) Execute(requestID string, args map[string]string) *protocol.RunResponse {
+func (a *CmdAction) Execute(requestID string, args map[string]string, dryRun bool) *protocol.RunResponse {
 	start := time.Now()
 
 	command, ok := args["command"]
 	if !ok || command == "" {
 		return protocol.NewErrorResponse(requestID,
 			&ActionError{Action: "cmd", Err: ErrMissingArg("command")}, 0)
+	}
+
+	// For dry run, we just check if the command executable exists in PATH
+	if dryRun {
+		// Extract the executable name (first part of command)
+		// This is a naive check; for complex shell commands it might be inaccurate
+		// but serves as a basic preflight check.
+		parts := strings.Fields(command)
+		if len(parts) > 0 {
+			exe := parts[0]
+			// If it's a shell builtin or complex pipeline, LookPath might fail or be irrelevant.
+			// attempting simple LookPath
+			if _, err := exec.LookPath(exe); err != nil {
+				// Don't fail the dry run hard, just report it
+				return protocol.NewRunResponse(
+					requestID,
+					false,
+					0,
+					fmt.Sprintf("Dry run: Command '%s' not found in PATH", exe),
+					"",
+					time.Since(start).Milliseconds(),
+				)
+			}
+		}
+
+		return protocol.NewRunResponse(
+			requestID,
+			true, // assume change for dry run
+			0,
+			fmt.Sprintf("Dry run: Would execute command: %s", command),
+			"",
+			time.Since(start).Milliseconds(),
+		)
 	}
 
 	// Check "creates" idempotency guard

@@ -14,7 +14,7 @@ import (
 type SystemdAction struct{}
 
 // Execute performs systemd operations with change detection.
-func (a *SystemdAction) Execute(requestID string, args map[string]string) *protocol.RunResponse {
+func (a *SystemdAction) Execute(requestID string, args map[string]string, dryRun bool) *protocol.RunResponse {
 	start := time.Now()
 
 	// Validate args
@@ -61,6 +61,39 @@ func (a *SystemdAction) Execute(requestID string, args map[string]string) *proto
 	case "daemon-reload":
 		// daemon-reload always reports changed (can't detect)
 		changed = true
+	}
+
+	if dryRun {
+		// Verify unit file exists for actions that require it
+		if action != "daemon-reload" {
+
+			// Try to find Unit file
+			cmd := exec.Command("systemctl", "list-unit-files", args["unit"])
+			if err := cmd.Run(); err != nil {
+				return protocol.NewRunResponse(
+					requestID,
+					false,
+					0,
+					fmt.Sprintf("Dry run: Unit %s not found", args["unit"]),
+					"",
+					time.Since(start).Milliseconds(),
+				)
+			}
+		}
+
+		statusMsg := "Dry run: State matches desired"
+		if changed {
+			statusMsg = fmt.Sprintf("Dry run: Would %s service", action)
+		}
+
+		return protocol.NewRunResponse(
+			requestID,
+			changed,
+			0,
+			statusMsg,
+			"",
+			time.Since(start).Milliseconds(),
+		)
 	}
 
 	// Execute systemd command

@@ -5,7 +5,7 @@ import "github.com/drax2gma/stapply/internal/protocol"
 // Action is the interface for all action executors.
 type Action interface {
 	// Execute runs the action and returns the response.
-	Execute(requestID string, args map[string]string) *protocol.RunResponse
+	Execute(requestID string, args map[string]string, dryRun bool) *protocol.RunResponse
 }
 
 // Registry holds registered action executors.
@@ -38,11 +38,11 @@ func (r *Registry) Get(name string) (Action, bool) {
 }
 
 // Execute runs an action by name.
-func (r *Registry) Execute(requestID, actionName string, args map[string]string) *protocol.RunResponse {
+func (r *Registry) Execute(requestID, actionName string, args map[string]string, dryRun bool) *protocol.RunResponse {
 	action, ok := r.Get(actionName)
 	if !ok {
 		return protocol.NewErrorResponse(requestID,
 			&ActionError{Action: actionName, Err: ErrUnknownAction}, 0)
 	}
-	return action.Execute(requestID, args)
+	return action.Execute(requestID, args, dryRun)
 }

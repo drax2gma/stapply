@@ -1,0 +1,27 @@
+[Unit]
+Description=Sapply Agent
+Documentation=https://github.com/drax2gma/stapply
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/stapply-agent -config /etc/stapply/agent.ini
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stapply-agent
+
+# Security settings for automation agent
+# Note: Relaxed restrictions to allow package installation,
+# config management, and systemd service control
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Environment file (optional, for overrides)
+EnvironmentFile=-/etc/sapply/agent.env
+
+[Install]
+WantedBy=multi-user.target

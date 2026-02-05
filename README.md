@@ -19,7 +19,7 @@ Minimal, agent-based remote automation utility written in Go. Replaces SSH-based
 
 ### Agent Requirements (Target Nodes)
 
-The `sapply-agent` is a standalone Go binary with **no external NATS package installation required**. The NATS client library is compiled into the binary.
+The `stapply-agent` is a standalone Go binary with **no external NATS package installation required**. The NATS client library is compiled into the binary.
 
 **Minimum requirements for Linux 64-bit target nodes:**
 
@@ -45,7 +45,7 @@ By default, NATS connections are restricted to private networks only:
 
 Use `--allow-public` flag to override (not recommended for production).
 
-**Deployment**: Just copy the `sapply-agent` binary and systemd unit file. No package installation needed.
+**Deployment**: Just copy the `stapply-agent` binary and systemd unit file. No package installation needed.
 
 ## Installation
 
@@ -66,10 +66,10 @@ curl -fsSL https://raw.githubusercontent.com/drax2gma/stapply/main/install.sh | 
 
 ### Manual Install
 
-1. Copy binary: `scp bin/sapply-agent root@host:/usr/local/bin/`
-2. Copy config: `scp examples/agent.ini root@host:/etc/sapply/`
-3. Copy systemd unit: `scp systemd/sapply-agent.service root@host:/etc/systemd/system/`
-4. Enable service: `ssh root@host systemctl enable --now sapply-agent`
+1. Copy binary: `scp bin/stapply-agent root@host:/usr/local/bin/`
+2. Copy config: `scp examples/agent.ini root@host:/etc/stapply/`
+3. Copy systemd unit: `scp systemd/stapply-agent.service root@host:/etc/systemd/system/`
+4. Enable service: `ssh root@host systemctl enable --now stapply-agent`
 
 ### Build
 
@@ -80,19 +80,19 @@ make build
 ### Run Agent (Terminal 1)
 
 ```bash
-./bin/sapply-agent -config examples/agent.ini
+./bin/stapply-agent -config examples/agent.ini
 ```
 
 ### Ping Agent (Terminal 2)
 
 ```bash
-./bin/sapply-ctl ping local
+./bin/stapply-ctl ping local
 ```
 
 ### Run Deployment
 
 ```bash
-./bin/sapply-ctl run -c examples/sapply.ini -e dev
+./bin/stapply-ctl run -c examples/stapply.ini -e dev
 ```
 
 ### Ad-hoc Command (No Config File Needed)
@@ -101,18 +101,18 @@ Run commands on specific agents without a config file:
 
 ```bash
 # Run shell command on specific agent (uses agent_id as NATS server by default)
-./bin/sapply-ctl adhoc -e mini cmd 'w'
-./bin/sapply-ctl adhoc -e mini cmd 'ls -la /etc'
-./bin/sapply-ctl adhoc -e mini cmd 'cat /etc/*ease'
+./bin/stapply-ctl adhoc -e mini cmd 'w'
+./bin/stapply-ctl adhoc -e mini cmd 'ls -la /etc'
+./bin/stapply-ctl adhoc -e mini cmd 'cat /etc/*ease'
 
 # Specify NATS server explicitly
-./bin/sapply-ctl adhoc -nats nats.example.com -e web1 cmd 'uname -a'
+./bin/stapply-ctl adhoc -nats nats.example.com -e web1 cmd 'uname -a'
 
 # Execute across all hosts in environment (requires config file)
-./bin/sapply-ctl adhoc -c examples/sapply.ini -e dev cmd 'uname -a'
+./bin/stapply-ctl adhoc -c examples/stapply.ini -e dev cmd 'uname -a'
 
 # Restart a service
-./bin/sapply-ctl adhoc -c examples/sapply.ini -e dev systemd restart nginx
+./bin/stapply-ctl adhoc -c examples/stapply.ini -e dev systemd restart nginx
 ```
 
 ## Agent Updates
@@ -124,7 +124,7 @@ Sapply supports live updates of running agents without SSH access.
 Agents automatically check their version on each ping:
 
 ```bash
-./bin/sapply-ctl ping web1
+./bin/stapply-ctl ping web1
 # Agent logs: ⚠️ Version mismatch: agent=0.0.9, controller=0.1.0
 ```
 
@@ -134,16 +134,16 @@ Update a running agent to match controller version:
 
 ```bash
 # Update agent (NATS defaults to agent hostname)
-./bin/sapply-ctl update web1
+./bin/stapply-ctl update web1
 
 # Specify NATS server explicitly
-./bin/sapply-ctl update -nats nats.example.com web1
+./bin/stapply-ctl update -nats nats.example.com web1
 ```
 
 **How it works:**
 
 1. Controller sends update request with target version and binary URL
-2. Agent downloads new binary from repo (`/bin/sapply-agent`)
+2. Agent downloads new binary from repo (`/bin/stapply-agent`)
 3. Agent replaces its binary and restarts:
    - **Systemd**: Exits cleanly for systemd restart
    - **Manual/dev**: Uses `execve` to restart in-place
@@ -160,7 +160,7 @@ Update a running agent to match controller version:
 
 ## Configuration
 
-### Controller Config (`sapply.ini`)
+### Controller Config (`stapply.ini`)
 
 ```ini
 [env:prod]
@@ -188,7 +188,7 @@ step3=cmd:systemctl start nginx
 [agent]
 agent_id=web1
 nats_server=nats.example.com
-nats_creds=/etc/sapply/nats.creds
+nats_creds=/etc/stapply/nats.creds
 ```
 
 ## Actions
@@ -205,8 +205,8 @@ nats_creds=/etc/sapply/nats.creds
 ```
 stapply/
 ├── cmd/
-│   ├── sapply-agent/    # Agent daemon
-│   └── sapply-ctl/      # Controller CLI
+│   ├── stapply-agent/    # Agent daemon
+│   └── stapply-ctl/      # Controller CLI
 ├── internal/
 │   ├── config/          # INI parser
 │   ├── actions/         # Action executors

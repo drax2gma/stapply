@@ -2,8 +2,8 @@
 
 # Build configuration
 BINARY_DIR := bin
-AGENT_BINARY := $(BINARY_DIR)/sapply-agent
-CTL_BINARY := $(BINARY_DIR)/sapply-ctl
+AGENT_BINARY := $(BINARY_DIR)/stapply-agent
+CTL_BINARY := $(BINARY_DIR)/stapply-ctl
 GO := go
 GOFLAGS := -ldflags="-s -w"
 
@@ -16,13 +16,13 @@ build: build-agent build-ctl
 # Build agent
 build-agent:
 	@mkdir -p $(BINARY_DIR)
-	$(GO) build $(GOFLAGS) -o $(AGENT_BINARY) ./cmd/sapply-agent
+	$(GO) build $(GOFLAGS) -o $(AGENT_BINARY) ./cmd/stapply-agent
 	upx --best --lzma $(AGENT_BINARY)
 
 # Build controller
 build-ctl:
 	@mkdir -p $(BINARY_DIR)
-	$(GO) build $(GOFLAGS) -o $(CTL_BINARY) ./cmd/sapply-ctl
+	$(GO) build $(GOFLAGS) -o $(CTL_BINARY) ./cmd/stapply-ctl
 	upx --best --lzma $(CTL_BINARY)
 
 # Run tests
@@ -37,9 +37,9 @@ clean:
 # Install agent (requires sudo)
 install-agent: build-agent
 	sudo install -m 755 $(AGENT_BINARY) /usr/local/bin/
-	sudo mkdir -p /etc/sapply
-	sudo install -m 644 systemd/sapply-agent.service /etc/systemd/system/
-	@echo "Agent installed. Run: sudo systemctl daemon-reload && sudo systemctl enable sapply-agent"
+	sudo mkdir -p /etc/stapply
+	sudo install -m 644 systemd/stapply-agent.service /etc/systemd/system/
+	@echo "Agent installed. Run: sudo systemctl daemon-reload && sudo systemctl enable stapply-agent"
 
 # Development helpers
 run-agent: build-agent
@@ -49,10 +49,10 @@ ping-local: build-ctl
 	./$(CTL_BINARY) ping local
 
 run-dev: build-ctl
-	./$(CTL_BINARY) run -c examples/sapply.ini -e dev
+	./$(CTL_BINARY) run -c examples/stapply.ini -e dev
 
 adhoc-test: build-ctl
-	./$(CTL_BINARY) adhoc -c examples/sapply.ini -e dev cmd 'uname -a'
+	./$(CTL_BINARY) adhoc -c examples/stapply.ini -e dev cmd 'uname -a'
 
 # Go module maintenance
 tidy:

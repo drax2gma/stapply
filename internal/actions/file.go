@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -17,7 +18,7 @@ import (
 type WriteFileAction struct{}
 
 // Execute writes a file and detects changes via hash comparison.
-func (a *WriteFileAction) Execute(requestID string, args map[string]string) *protocol.RunResponse {
+func (a *WriteFileAction) Execute(requestID string, args map[string]string, dryRun bool) *protocol.RunResponse {
 	start := time.Now()
 
 	// Validate required args
@@ -33,8 +34,74 @@ func (a *WriteFileAction) Execute(requestID string, args map[string]string) *pro
 			&ActionError{Action: "write_file", Err: ErrMissingArg("content")}, 0)
 	}
 
+	if dryRun {
+		// Check if directory exists
+		dir := filepath.Dir(path)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return protocol.NewErrorResponse(requestID,
+				fmt.Errorf("dry run: directory %s does not exist", dir), time.Since(start).Milliseconds())
+		}
+
+		// Check if file exists to determine change status
+		changed := true
+		if existingContent, err := os.ReadFile(path); err == nil {
+			newHash := computeHash([]byte(content))
+			existingHash := computeHash(existingContent)
+			if existingHash == newHash {
+				changed = false
+			}
+		}
+
+		statusMsg := "Dry run: Content match"
+		if changed {
+			statusMsg = "Dry run: Would update file content"
+		}
+
+		return protocol.NewRunResponse(
+			requestID,
+			changed,
+			0,
+			statusMsg,
+			"",
+			time.Since(start).Milliseconds(),
+		)
+	}
+
 	// Compute hash of new content
 	newHash := computeHash([]byte(content))
+
+	// Check if directory exists for dry run
+	if dryRun {
+		// Check if directory exists
+		dir := filepath.Dir(path)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			return protocol.NewErrorResponse(requestID,
+				fmt.Errorf("dry run: directory %s does not exist", dir), time.Since(start).Milliseconds())
+		}
+
+		// Check if file exists to determine change status
+		changed := true
+		if existingContent, err := os.ReadFile(path); err == nil {
+			existingHash := computeHash(existingContent)
+			if existingHash == newHash {
+				changed = false
+			}
+		}
+
+		statusMsg := "Dry run: Content match"
+		if changed {
+			statusMsg = "Dry run: Would update file content"
+		}
+
+		return protocol.NewRunResponse(
+			requestID,
+			changed,
+			0,
+			statusMsg,
+			"",
+			time.Since(start).Milliseconds(),
+		)
+	}
 
 	// Check if file exists and compare hash
 	changed := true

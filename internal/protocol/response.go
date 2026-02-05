@@ -18,6 +18,20 @@ type PingResponse struct {
 	UptimeSeconds int64  `json:"uptime_seconds"`
 }
 
+// DiscoverResponse contains system facts.
+type DiscoverResponse struct {
+	RequestID     string   `json:"request_id"`
+	AgentID       string   `json:"agent_id"`
+	Hostname      string   `json:"hostname"`
+	OS            string   `json:"os"`
+	Arch          string   `json:"arch"`
+	CPUCount      int      `json:"cpu_count"`
+	MemoryTotal   uint64   `json:"memory_total"`    // bytes
+	MemoryFree    uint64   `json:"memory_free"`     // bytes
+	DiskUsageRoot int      `json:"disk_usage_root"` // percentage
+	IPAddresses   []string `json:"ip_addresses"`
+}
+
 // RunResponse is the response to a run request.
 type RunResponse struct {
 	RequestID  string `json:"request_id"`
