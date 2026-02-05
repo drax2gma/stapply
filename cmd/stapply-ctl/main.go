@@ -15,7 +15,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-const Version = "0.1.0"
+var Version = "0.1.0-dev"
 
 func getDefaultNATSURL() string {
 	val := os.Getenv("STAPPLY_DEFAULT_NATS")

@@ -23,7 +23,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-const Version = "0.1.0"
+var Version = "0.1.0-dev"
 
 var (
 	startTime = time.Now()

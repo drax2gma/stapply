@@ -15,7 +15,8 @@ import (
 
 func cmdUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
-	natsURL := fs.String("nats", "", "NATS server (FQDN or IP)")
+	defaultNats := getDefaultNATSURL()
+	natsURL := fs.String("nats", defaultNats, "NATS server (FQDN or IP)")
 	allowPublic := fs.Bool("allow-public", false, "Allow connection to public NATS servers")
 	timeout := fs.Duration("timeout", 30*time.Second, "Request timeout")
 	fs.Parse(args)

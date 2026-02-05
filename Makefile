@@ -5,7 +5,17 @@ BINARY_DIR := bin
 AGENT_BINARY := $(BINARY_DIR)/stapply-agent
 CTL_BINARY := $(BINARY_DIR)/stapply-ctl
 GO := go
-GOFLAGS := -ldflags="-s -w"
+
+# Dynamic Versioning
+VERSION_MAJOR := 0
+VERSION_MINOR := 1
+BUILD_DATE := $(shell date +%Y%m%d%H%M)
+GIT_HASH := $(shell git rev-parse --short HEAD)
+VERSION_FULL := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_DATE)-$(GIT_HASH)
+
+# Inject version into both main packages
+LDFLAGS := -s -w -X main.Version=$(VERSION_FULL)
+GOFLAGS := -ldflags="$(LDFLAGS)"
 
 # Default target
 all: build
@@ -64,13 +74,13 @@ deps:
 # Create release binary for Linux AMD64
 release:
 	@mkdir -p $(BINARY_DIR)
-	@rm -f $(BINARY_DIR)/sapply-agent $(BINARY_DIR)/sapply-ctl
-	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/sapply-agent ./cmd/sapply-agent
-	upx --best --lzma $(BINARY_DIR)/sapply-agent
-	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/sapply-ctl ./cmd/sapply-ctl
-	upx --best --lzma $(BINARY_DIR)/sapply-ctl
-	@echo "✅ Release binary created: $(BINARY_DIR)/sapply-agent"
-	@echo "✅ Release binary created: $(BINARY_DIR)/sapply-ctl"
+	@rm -f $(BINARY_DIR)/stapply-agent $(BINARY_DIR)/stapply-ctl
+	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/stapply-agent ./cmd/stapply-agent
+	upx --best --lzma $(BINARY_DIR)/stapply-agent
+	GOOS=linux GOARCH=amd64 $(GO) build $(GOFLAGS) -o $(BINARY_DIR)/stapply-ctl ./cmd/stapply-ctl
+	upx --best --lzma $(BINARY_DIR)/stapply-ctl
+	@echo "✅ Release binary created: $(BINARY_DIR)/stapply-agent"
+	@echo "✅ Release binary created: $(BINARY_DIR)/stapply-ctl"
 	@echo "   OS: linux"
 	@echo "   Arch: amd64"
 	@echo ""
