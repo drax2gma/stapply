@@ -7,7 +7,9 @@ set -e
 # Default values
 AGENT_ID="$(hostname)"
 NATS_URL="nats://localhost:4222"
+NATS_URL="nats://localhost:4222"
 NATS_CREDS=""
+SECRET_KEY=""
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/stapply"
 SYSTEMD_DIR="/etc/systemd/system"
@@ -28,13 +30,17 @@ while [[ $# -gt 0 ]]; do
             NATS_CREDS="$2"
             shift 2
             ;;
+        --secret-key)
+            SECRET_KEY="$2"
+            shift 2
+            ;;
         --binary-url)
             BINARY_URL="$2"
             shift 2
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--agent-id <id>] [--nats-server <fqdn>] [--nats-creds <path>]"
+            echo "Usage: $0 [--agent-id <id>] [--nats-server <fqdn>] [--nats-creds <path>] [--secret-key <key>]"
             exit 1
             ;;
     esac
@@ -44,6 +50,24 @@ done
 if [ "$EUID" -ne 0 ]; then
     echo "Error: This script must be run as root"
     exit 1
+fi
+
+# Interactive prompt for secret key if not provided
+if [ -z "$SECRET_KEY" ] && [ -t 0 ]; then
+    echo ""
+    echo "🔒 Security Configuration"
+    read -p "Do you want to configure a shared secret key for encryption? [y/N] " configure_key
+    if [[ "$configure_key" =~ ^[Yy]$ ]]; then
+        read -s -p "Enter shared secret key: " SECRET_KEY
+        echo ""
+        read -s -p "Confirm shared secret key: " SECRET_KEY_CONFIRM
+        echo ""
+        if [ "$SECRET_KEY" != "$SECRET_KEY_CONFIRM" ]; then
+            echo "Error: Keys do not match."
+            exit 1
+        fi
+    fi
+    echo ""
 fi
 
 echo "🚀 Installing Sapply Agent..."

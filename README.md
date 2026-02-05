@@ -81,7 +81,10 @@ curl -fsSL https://raw.githubusercontent.com/drax2gma/stapply/main/install.sh | 
 
 - `--agent-id <id>` (required): Unique agent identifier
 - `--nats-url <url>`: NATS server URL (default: `nats://localhost:4222`)
+- `--agent-id <id>` (required): Unique agent identifier
+- `--nats-url <url>`: NATS server URL (default: `nats://localhost:4222`)
 - `--nats-creds <path>`: Path to NATS credentials file (optional)
+- `--secret-key <key>`: Shared secret key for encryption (optional, interactive prompt if omitted)
 
 ### Manual Install
 

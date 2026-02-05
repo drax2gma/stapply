@@ -21,7 +21,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 # Environment file (optional, for overrides)
-EnvironmentFile=-/etc/sapply/agent.env
+EnvironmentFile=-/etc/stapply/agent.env
 
 [Install]
 WantedBy=multi-user.target
