@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/drax2gma/stapply/internal/protocol"
@@ -33,8 +34,21 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 		return
 	}
 
-	// Download new binary
-	tmpPath := "/tmp/stapply-agent-new"
+	// Determine target path based on current executable
+	executable, err := os.Executable()
+	if err != nil {
+		log.Printf("⚠️  Failed to get executable path, defaulting to /usr/local/bin/stapply-agent: %v", err)
+		executable = "/usr/local/bin/stapply-agent"
+	}
+
+	// Resolve symlinks if any
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		log.Printf("⚠️  Failed to resolve symlinks: %v", err)
+	}
+
+	// Download new binary to a temporary file on the SAME filesystem
+	tmpPath := executable + ".new"
 	if err := downloadBinary(req.BinaryURL, tmpPath); err != nil {
 		log.Printf("❌ Failed to download binary: %v", err)
 		resp := &protocol.UpdateResponse{
@@ -49,6 +63,7 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 	// Make it executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {
 		log.Printf("❌ Failed to chmod binary: %v", err)
+		os.Remove(tmpPath) // Cleanup
 		resp := &protocol.UpdateResponse{
 			RequestID: req.RequestID,
 			Success:   false,
@@ -58,10 +73,10 @@ func handleUpdate(msg *nats.Msg, agentID string, nc *nats.Conn) {
 		return
 	}
 
-	// Replace the binary
-	binaryPath := "/usr/local/bin/stapply-agent"
-	if err := os.Rename(tmpPath, binaryPath); err != nil {
+	// Replace the binary (atomic rename on same FS)
+	if err := os.Rename(tmpPath, executable); err != nil {
 		log.Printf("❌ Failed to replace binary: %v", err)
+		os.Remove(tmpPath) // Cleanup
 		resp := &protocol.UpdateResponse{
 			RequestID: req.RequestID,
 			Success:   false,
