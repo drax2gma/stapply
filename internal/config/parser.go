@@ -117,7 +117,22 @@ func (c *Config) setKeyValue(section, name, key, value string, lineNum int) erro
 				env.Concurrency = n
 			}
 		default:
-			return fmt.Errorf("line %d: unknown env key: %s", lineNum, key)
+			// Check for var1=, var2=, etc.
+			if strings.HasPrefix(key, "var") {
+				if env.Vars == nil {
+					env.Vars = make(map[string]string)
+				}
+				// Extract the variable assignment: key=value
+				if eqIdx := strings.Index(value, "="); eqIdx != -1 {
+					varKey := value[:eqIdx]
+					varValue := value[eqIdx+1:]
+					env.Vars[varKey] = varValue
+				} else {
+					return fmt.Errorf("line %d: invalid var format: %s (expected key=value)", lineNum, value)
+				}
+			} else {
+				return fmt.Errorf("line %d: unknown env key: %s", lineNum, key)
+			}
 		}
 
 	case "host":

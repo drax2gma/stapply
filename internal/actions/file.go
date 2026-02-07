@@ -1,14 +1,17 @@
 package actions
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"text/template"
 	"time"
 
 	"github.com/drax2gma/stapply/internal/protocol"
@@ -34,6 +37,28 @@ func (a *WriteFileAction) Execute(requestID string, args map[string]string, dryR
 			&ActionError{Action: "write_file", Err: ErrMissingArg("content")}, 0)
 	}
 
+	// If vars are supplied, treat content as a Go template and render it.
+	renderedContent := content
+	if varsJSON, ok := args["vars"]; ok && varsJSON != "" {
+		var vars map[string]interface{}
+		if err := json.Unmarshal([]byte(varsJSON), &vars); err != nil {
+			return protocol.NewErrorResponse(requestID,
+				fmt.Errorf("vars parse error: %w", err), 0)
+		}
+
+		tmpl, err := template.New("content").Parse(content)
+		if err != nil {
+			return protocol.NewErrorResponse(requestID,
+				fmt.Errorf("template parse error: %w", err), 0)
+		}
+		var buf bytes.Buffer
+		if err := tmpl.Execute(&buf, vars); err != nil {
+			return protocol.NewErrorResponse(requestID,
+				fmt.Errorf("template execute error: %w", err), 0)
+		}
+		renderedContent = buf.String()
+	}
+
 	if dryRun {
 		// Check if directory exists
 		dir := filepath.Dir(path)
@@ -45,7 +70,7 @@ func (a *WriteFileAction) Execute(requestID string, args map[string]string, dryR
 		// Check if file exists to determine change status
 		changed := true
 		if existingContent, err := os.ReadFile(path); err == nil {
-			newHash := computeHash([]byte(content))
+			newHash := computeHash([]byte(renderedContent))
 			existingHash := computeHash(existingContent)
 			if existingHash == newHash {
 				changed = false
@@ -68,7 +93,7 @@ func (a *WriteFileAction) Execute(requestID string, args map[string]string, dryR
 	}
 
 	// Compute hash of new content
-	newHash := computeHash([]byte(content))
+	newHash := computeHash([]byte(renderedContent))
 
 	// Check if directory exists for dry run
 	if dryRun {
@@ -114,7 +139,7 @@ func (a *WriteFileAction) Execute(requestID string, args map[string]string, dryR
 
 	// Write file if changed or doesn't exist
 	if changed {
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(renderedContent), 0644); err != nil {
 			return protocol.NewErrorResponse(requestID, err, time.Since(start).Milliseconds())
 		}
 	}

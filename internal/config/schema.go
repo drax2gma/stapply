@@ -16,9 +16,10 @@ type Config struct {
 // Environment defines a deployment environment.
 type Environment struct {
 	Name        string
-	Hosts       []string // List of host IDs
-	Apps        []string // List of app names
-	Concurrency int      // Max parallel agents (0 = unlimited)
+	Hosts       []string          // List of host IDs
+	Apps        []string          // List of app names
+	Concurrency int               // Max parallel agents (0 = unlimited)
+	Vars        map[string]string // Environment-specific variables
 }
 
 // Host defines a target machine.

@@ -10,8 +10,7 @@ GO := go
 VERSION_MAJOR := 0
 VERSION_MINOR := 1
 BUILD_DATE := $(shell date +%Y%m%d%H%M)
-GIT_HASH := $(shell git rev-parse --short HEAD)
-VERSION_FULL := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_DATE)-$(GIT_HASH)
+VERSION_FULL := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_DATE)
 
 # Inject version into both main packages
 LDFLAGS := -s -w -X main.Version=$(VERSION_FULL)

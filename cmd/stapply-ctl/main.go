@@ -42,6 +42,45 @@ func getDefaultNATSURL() string {
 	return val
 }
 
+// mergeEnvVarsIntoArgs merges environment-level vars with step-specific vars.
+// Step vars override environment vars. Returns a copy of args with merged "vars" JSON.
+func mergeEnvVarsIntoArgs(env *config.Environment, args map[string]string) (map[string]string, error) {
+	// Prepare merged map as map[string]interface{} for JSON marshalling.
+	merged := make(map[string]interface{})
+
+	if env != nil && env.Vars != nil {
+		for k, v := range env.Vars {
+			merged[k] = v
+		}
+	}
+
+	if varsJSON, ok := args["vars"]; ok && varsJSON != "" {
+		var stepVars map[string]interface{}
+		if err := json.Unmarshal([]byte(varsJSON), &stepVars); err != nil {
+			return nil, fmt.Errorf("invalid step vars JSON: %w", err)
+		}
+		for k, v := range stepVars {
+			merged[k] = v
+		}
+	}
+
+	// Copy args to avoid mutating original
+	newArgs := make(map[string]string)
+	for k, v := range args {
+		newArgs[k] = v
+	}
+
+	if len(merged) > 0 {
+		js, err := json.Marshal(merged)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal merged vars: %w", err)
+		}
+		newArgs["vars"] = string(js)
+	}
+
+	return newArgs, nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -993,10 +1032,22 @@ func cmdPreflight(args []string) {
 
 				steps := app.GetOrderedSteps()
 				for i, step := range steps {
-					// Use parsed args from step
-					stepArgs := step.ArgsMap
-					if stepArgs == nil {
-						stepArgs = make(map[string]string)
+					// Use parsed args from step (copy and merge env vars)
+					stepArgs := make(map[string]string)
+					if step.ArgsMap != nil {
+						for k, v := range step.ArgsMap {
+							stepArgs[k] = v
+						}
+					}
+					// Merge environment-level vars (env.Vars) with step vars (step overrides env)
+					if env != nil {
+						mergedArgs, err := mergeEnvVarsIntoArgs(env, stepArgs)
+						if err != nil {
+							fmt.Printf("      ❌ Invalid vars for step %d: %v\n", i+1, err)
+							failed++
+							continue
+						}
+						stepArgs = mergedArgs
 					}
 
 					// DRY RUN REQUEST

@@ -223,6 +223,27 @@ step3=cmd:systemctl start nginx
 > Long commands or file contents must be on a single line. Turn off "line wrap" in your editor when editing config files.
 > For complex file content, use `template_file` with an external file instead of `write_file` with inline content.
 
+### Environment variables and templating
+
+You can define environment-scoped template variables using the `var1`, `var2`, etc. keys in an `[env:<name>]` section. These variables are merged with any step-level `vars` (step-level values override environment values) and are available to `template_file` and `write_file` actions.
+
+Example:
+
+```ini
+[env:staging]
+hosts=staging-server
+apps=deploy_backend
+var1=db_url=postgres://staging-db
+var2=port=8080
+
+[app:deploy_backend]
+step1=cmd:systemctl stop myapp
+step2=write_file:/etc/myapp.conf mode=0644 content="db={{.db_url}}\nport={{.port}}"
+step3=systemd:start myapp
+```
+
+This keeps application steps DRY while allowing per-environment customization.
+
 ### Agent Config (`agent.ini`)
 
 ```ini
@@ -236,11 +257,11 @@ nats_creds=/etc/stapply/nats.creds
 
 | Action            | Status | Description                                              |
 | ----------------- | ------ | -------------------------------------------------------- |
-| `cmd`             | ✅ M1  | Execute shell command                                    |
-| `write_file`      | ✅ M2  | Write content to file with change detection              |
-| `template_file`   | ✅ M2  | Render Go template to file                               |
-| `systemd`         | ✅ M3  | Systemd unit control (enable/disable/start/stop/restart) |
-| `deploy_artifact` | ✅ M4  | Large binary/file distribution (chunked transfer)        |
+| `cmd`             | ✅ M1   | Execute shell command                                    |
+| `write_file`      | ✅ M2   | Write content to file with change detection              |
+| `template_file`   | ✅ M2   | Render Go template to file                               |
+| `systemd`         | ✅ M3   | Systemd unit control (enable/disable/start/stop/restart) |
+| `deploy_artifact` | ✅ M4   | Large binary/file distribution (chunked transfer)        |
 
 ## Project Structure
 
